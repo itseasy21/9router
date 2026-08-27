@@ -701,9 +701,9 @@
     "format": "ollama"
   },
   "openai": {
-    "baseUrl": "https://api.openai.com/v1/chat/completions",
+    "baseUrl": "https://api.openai.com/v1/responses",
     "forceStream": true,
-    "format": "openai"
+    "format": "openai-responses"
   },
   "opencode-go": {
     "baseUrl": "https://opencode.ai/zen/go/v1/chat/completions",

@@ -10,7 +10,7 @@ import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel }
 // Map a target wire-format to its native thinking format (when capability has none).
 const FORMAT_TO_NATIVE = {
   openai: "openai",
-  "openai-responses": "openai",
+  "openai-responses": "openai-responses",
   "openai-response": "openai",
   codex: "openai",
   claude: "claude-budget",
@@ -127,6 +127,7 @@ export const captureThinking = extractThinking;
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
 function resolveFormat(targetFormat, model, provider) {
+  if (targetFormat === "openai-responses") return "openai-responses";
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   const caps = getCapabilitiesForModel(provider, model);
@@ -269,6 +270,11 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
       if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
+      break;
+    }
+    case "openai-responses": {
+      const effort = none && canDisable ? "none" : normalizeOpenAILevel(toLevel(eff), supportedLevels);
+      if (effort) body.reasoning = { effort, summary: "auto" };
       break;
     }
     case "claude-adaptive": {

@@ -71,6 +71,22 @@ export class DefaultExecutor extends BaseExecutor {
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {
+      if (this.provider === "openai") {
+        const legacyEffort = transformed.reasoning_effort;
+        if (legacyEffort !== undefined) {
+          const reasoning = transformed.reasoning && typeof transformed.reasoning === "object" && !Array.isArray(transformed.reasoning)
+            ? transformed.reasoning
+            : {};
+          transformed.reasoning = { ...reasoning, effort: legacyEffort, summary: reasoning.summary || "auto" };
+        }
+        delete transformed.reasoning_effort;
+        if (transformed.max_output_tokens === undefined) {
+          const legacyMaxTokens = transformed.max_tokens ?? transformed.max_completion_tokens;
+          if (legacyMaxTokens !== undefined) transformed.max_output_tokens = legacyMaxTokens;
+        }
+        delete transformed.max_tokens;
+        delete transformed.max_completion_tokens;
+      }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
       if (this.config.quirks?.dropClientMetadata) {
         delete transformed.client_metadata;

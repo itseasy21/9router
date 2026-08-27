@@ -38,6 +38,10 @@ const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh
 
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
+  // opencode Muse models route to /zen/v1/responses (reasoning.effort) which
+  // expects the standard OpenAI enum none|minimal|low|medium|high|xhigh —
+  // the zen gateway's none|low|medium|high|max is rejected with 400 max→xhigh.
+  { provider: "opencode", pattern: "*muse*", levels: L.openai },
   { provider: "codex", pattern: "*gpt-5.6-sol*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-terra*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-luna*", levels: CODEX_GPT_5_6_LEVELS },
