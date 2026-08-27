@@ -319,10 +319,15 @@ export async function POST(request) {
             isValid = res.status !== 401 && res.status !== 403;
           } else {
             const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
+            // AgentRouter sends the key as a Bearer token (ANTHROPIC_AUTH_TOKEN);
+            // other claude-format providers in this group use x-api-key.
+            const authHeader = provider === "agentrouter"
+              ? { "Authorization": `Bearer ${apiKey}` }
+              : { "x-api-key": apiKey };
             const res = await fetch(cfg.baseUrl, {
               method: "POST",
               headers: {
-                "x-api-key": apiKey,
+                ...authHeader,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
                 ...(cfg.headers || {}),

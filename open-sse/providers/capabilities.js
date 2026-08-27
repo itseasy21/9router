@@ -189,6 +189,14 @@ export const PROVIDER_CAPABILITIES = {
     "laguna-s-2.1":  { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 32000 },
     "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 },
   },
+  // AgentRouter — Claude wire endpoint for ALL models (internal routing translates).
+  // Non-claude ids must still emit claude thinking{} blocks, not their native
+  // reasoning_effort, or AgentRouter rejects them. claude-opus-5 keeps claude-adaptive.
+  "agentrouter": {
+    "gpt-5.6-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+    "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 50000 },
+    "glm-5.3":          { reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 128000 },
+  },
 };
 
 /**
