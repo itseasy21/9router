@@ -149,18 +149,11 @@ export const PROVIDER_CAPABILITIES = {
     "gpt-5.6-luna-review":       CODEX_GPT_56_DEFAULT_CAPS,
   },
   "kiro": {
-    "gpt-5.6-sol": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
+    // Base Kiro model entries only. Synthetic -thinking/-agentic variants
+    // resolve through the translator's suffix strip, and the experimental
+    // GPT-5.6 tiers arrive via the live `ListAvailableModels` catalog when
+    // a given account is on the rollout — listing them statically here used
+    // to advertise model ids Kiro never accepted (→ 400 INVALID_MODEL_ID).
   },
   // CodeBuddy.cn — authoritative per-model metadata from the gateway's model
   // config (contextWindow=maxInputTokens, maxOutput=maxOutputTokens, vision=
