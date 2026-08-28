@@ -32,6 +32,7 @@ const FORMAT_LEVELS = {
   hunyuan: L.base,
   step: L.base,
   ollama: L.levelMax,
+  modal: L.levelMax,   // reasoning:{enabled,effort} — passes max through (normalizeOpenAILevel clamps only when absent)
 };
 
 const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];

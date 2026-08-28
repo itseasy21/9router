@@ -197,6 +197,12 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 50000 },
     "glm-5.3":          { reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 128000 },
   },
+  // Modal — OpenAI-compatible gateway. GLM-5.3-Flash is multimodal + reasons via
+  // reasoning:{enabled,effort}. The `*glm*` pattern would mis-match it to `zai` and
+  // drop vision, so it is pinned here.
+  "modal": {
+    "zai-org/GLM-5.3-Flash": { vision: true, reasoning: true, thinkingFormat: "modal", contextWindow: 1000000, maxOutput: 128000 },
+  },
 };
 
 /**

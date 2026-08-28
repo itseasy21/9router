@@ -11,6 +11,7 @@ const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
+  const isModal = provider === "modal";
   const isCookie = authType === "cookie";
   const isXaiApiKey = provider === "xai" && !isCookie;
   const credentialLabel = isCookie ? "Cookie Value" : provider === "qoder" ? "Personal Access Token (PAT)" : "API Key";
@@ -54,6 +55,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
+      return { baseUrl: formData.ollamaHostUrl.trim() };
+    }
+    if (isModal) {
       return { baseUrl: formData.ollamaHostUrl.trim() };
     }
     if (isAzure) {
@@ -247,6 +251,17 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
+          </div>
+        )}
+        {isModal && (
+          <div className="flex gap-2">
+            <Input
+              label="Endpoint URL"
+              value={formData.ollamaHostUrl}
+              onChange={(e) => setFormData({ ...formData, ollamaHostUrl: e.target.value })}
+              placeholder="https://user--ep-x-server.us-west.modal.direct/v1/chat/completions"
+              className="flex-1"
+            />
           </div>
         )}
         {!isOllamaLocal && (

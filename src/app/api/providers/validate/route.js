@@ -252,6 +252,22 @@ export async function POST(request) {
         });
       }
 
+      if (provider === "modal") {
+        const baseUrl = (providerSpecificData?.baseUrl || "").trim().replace(/\/+$/, "");
+        if (!baseUrl) return NextResponse.json({ valid: false, error: "Missing endpoint URL" });
+        const url = baseUrl.endsWith("/chat/completions") ? baseUrl : `${baseUrl}/chat/completions`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "zai-org/GLM-5.3-Flash", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
+        });
+        isValid = res.status !== 401 && res.status !== 403;
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid token or endpoint",
+        });
+      }
+
       switch (provider) {
         case "openai":
           const openaiRes = await fetch("https://api.openai.com/v1/models", {

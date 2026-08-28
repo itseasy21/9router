@@ -379,10 +379,15 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       if (level) body.reasoning_effort = level;
       break;
     }
+    case "modal": {
+      // Modal GLM-5.3-Flash: reasoning:{enabled,effort}. "none" → enabled:false.
+      if (none && canDisable) { body.reasoning = { enabled: false }; break; }
+      const level = toLevel(eff);
+      body.reasoning = { enabled: true, effort: level && level !== "auto" ? normalizeOpenAILevel(level, supportedLevels) : "high" };
+      break;
+    }
     case "kiro":
       // Kiro thinking handled via system-tag injection in openai-to-kiro.js; no body field here.
-      break;
-    default:
       break;
   }
 }
