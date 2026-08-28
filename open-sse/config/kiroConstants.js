@@ -200,9 +200,14 @@ function extractKiroGptEffortLevel(body) {
 }
 
 export function buildKiroAdditionalModelRequestFields(body, effortPath = "output_config") {
-  const effort = effortPath === "reasoning"
+  let effort = effortPath === "reasoning"
     ? extractKiroGptEffortLevel(body)
     : extractKiroEffortLevel(body);
+  // Default generic adaptive thinking (no explicit effort) to high for GPT-5.6;
+  // the adaptive flag alone does not reach the upstream native reasoning field.
+  if (!effort && effortPath === "reasoning" && body?.thinking?.type === "adaptive") {
+    effort = "high";
+  }
   if (!effort) return undefined;
   if (effortPath === "reasoning") {
     // Mirrors Kiro CLI/KAS buildEffortRequestFields("reasoning") for GPT.
@@ -242,7 +247,7 @@ export function supportsKiroAdditionalModelRequestFields(model) {
 
 export function usesKiroNativeGptEffort(body, model) {
   return resolveKiroEffortPath(model) === "reasoning"
-    && extractKiroGptEffortLevel(body) !== null;
+    && buildKiroAdditionalModelRequestFieldsForModel(body, model) !== undefined;
 }
 
 export function buildKiroAdditionalModelRequestFieldsForModel(body, model) {
