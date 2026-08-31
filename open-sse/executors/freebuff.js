@@ -1,6 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { freebuffFetch } from "../utils/freebuffTransport.js";
 
 // Free-tier access to Freebuff requires wrapping every chat completion in the
 // agent-run lifecycle and holding a waiting-room session, mirroring the
@@ -46,8 +46,16 @@ const MAX_ATTEMPTS = 2;
 // require a Go TLS fingerprint (JA3) — Node.js undici is rejected with
 // free_mode_cli_required. Only Gemini models work from Node.js.
 const FREEBUFF_AGENT_BY_MODEL = Object.freeze({
-  "google/gemini-2.5-flash-lite": "base2-free",
-  "google/gemini-3.1-flash-lite-preview": "base2-free",
+  "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
+  "deepseek/deepseek-v4-pro": "base2-free-deepseek",
+  "openai/gpt-5.6-luna": "base2-free-luna",
+  "minimax/minimax-m3": "base2-free-minimax-m3",
+  "mimo/mimo-v2.5": "base2-free-mimo",
+  "z-ai/glm-5.3-flash": "base2-free-glm-5-3-flash",
+  "z-ai/glm-5.2": "base2-free-glm",
+  "crof/kimi-k3-eco": "base2-free-kimi-k3-eco",
+  "anthropic/claude-fable-5": "base2-free-fable",
+  "meta/muse-spark-1.2-contributor": "base2-free-muse-spark",
 });
 
 function generateClientSessionId() {
@@ -139,7 +147,7 @@ export class FreebuffExecutor extends BaseExecutor {
     if (method === "POST" && body !== null) {
       allHeaders["Content-Type"] = "application/json";
     }
-    return proxyAwareFetch(url, {
+    return freebuffFetch(url, {
       method,
       headers: allHeaders,
       body: method === "POST" && body !== null ? JSON.stringify(body) : undefined,
@@ -408,7 +416,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
       let response;
       try {
-        response = await proxyAwareFetch(url, {
+        response = await freebuffFetch(url, {
           method: "POST",
           headers,
           body: bodyStr,
