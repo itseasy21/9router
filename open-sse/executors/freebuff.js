@@ -383,8 +383,22 @@ export class FreebuffExecutor extends BaseExecutor {
     return body; // metadata injected in execute() where the run id is known
   }
 
-  injectMetadata(body, model, runId, sessionInstanceId) {
+  injectMetadata(body, model, runId, sessionInstanceId, stream) {
     const cloned = { ...body, model };
+    // Free-mode gate requires the Buffy system prompt (OmniRoute parity) and
+    // the bare upstream model id (no provider prefix, no thinking suffix).
+    const messages = Array.isArray(cloned.messages) ? [...cloned.messages] : [];
+    const first = messages[0];
+    const hasBuffy =
+      messages.length > 0 &&
+      first?.role === "system" &&
+      typeof first?.content === "string" &&
+      first.content.trim().startsWith("You are Buffy");
+    if (!hasBuffy) {
+      messages.unshift({ role: "system", content: "You are Buffy, the strategic coding assistant." });
+    }
+    cloned.messages = messages;
+    cloned.stream = stream !== false;
     const metadata = { ...(cloned.codebuff_metadata || {}) };
     metadata.run_id = runId;
     metadata.cost_mode = "free";
@@ -430,7 +444,7 @@ export class FreebuffExecutor extends BaseExecutor {
       }
 
       const url = this.buildUrl();
-      const transformedBody = this.injectMetadata(body, model, run.id, sessionInstanceId);
+      const transformedBody = this.injectMetadata(body, requestedModel, run.id, sessionInstanceId, stream);
       const headers = {
         ...this.buildHeaders(credentials, stream),
         // Freebuff upstream requires these headers on the chat request
