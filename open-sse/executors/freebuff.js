@@ -311,6 +311,9 @@ export class FreebuffExecutor extends BaseExecutor {
 
   // ---- Agent-run lifecycle ---------------------------------------------
 
+  // Runs are single-use upstream: a chat request consumes its run, and reusing
+  // it returns 404 "No endpoints found". Start a fresh run per request and
+  // FINISH it in the background after the response (OmniRoute parity).
   async acquireRun(agentId, { credentials, signal, log, proxyOptions }) {
     const state = this.getState(credentials);
     const now = Date.now();
@@ -320,17 +323,12 @@ export class FreebuffExecutor extends BaseExecutor {
         { cooldown: true },
       );
     }
-    const current = state.runs.get(agentId);
-    if (current && now - current.startedAt < RUN_IDLE_TTL_MS) {
-      current.inflight += 1;
-      current.requestCount += 1;
-      return current;
+    const previous = state.runs.get(agentId);
+    if (previous) {
+      this.finishRun(previous, credentials, proxyOptions).catch(() => {});
+      state.runs.delete(agentId);
     }
     const run = await this.startRun(agentId, { credentials, signal, log, proxyOptions });
-    if (current) {
-      // Fire-and-forget FINISH for the rotated-out run (Freebuff2API drains).
-      this.finishRun(current, credentials, proxyOptions).catch(() => {});
-    }
     state.runs.set(agentId, run);
     return run;
   }
@@ -472,14 +470,19 @@ export class FreebuffExecutor extends BaseExecutor {
 
       if (response.ok) {
         console.info(`[FREEBUFF:CHAT] status=${response.status} model=${requestedModel} agent=${agentId}`);
-        this.releaseRun(run);
+        // The run is consumed by this request — drain it in the background so
+        // the next request starts a fresh one.
+        state.runs.delete(agentId);
+        this.finishRun(run, credentials, proxyOptions).catch(() => {});
         return { response, url, headers, transformedBody };
       }
 
       const errorBody = await response.text().catch(() => "");
       const message = errorMessage(errorBody);
       console.error(`[FREEBUFF:CHAT_ERROR] status=${response.status} model=${requestedModel} agent=${agentId} message=${message.slice(0, 200)}`);
-      this.releaseRun(run);
+      // A failed request also consumes the run — discard it so the retry
+      // (or next request) gets a fresh one.
+      state.runs.delete(agentId);
 
       if (response.status === 401) {
         // Auth token rejected → 30-min cooldown like Freebuff2API, and surface
