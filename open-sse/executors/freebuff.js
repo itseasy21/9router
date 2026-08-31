@@ -121,7 +121,9 @@ export class FreebuffExecutor extends BaseExecutor {
     } else if (credentials.apiKey) {
       headers.Authorization = `Bearer ${credentials.apiKey}`;
     }
-    headers.Accept = stream ? "text/event-stream" : "application/json";
+    // OmniRoute parity: the upstream 404s ("No endpoints found") when the
+    // streaming chat request advertises only text/event-stream.
+    headers.Accept = "application/json, text/event-stream";
     return headers;
   }
 
