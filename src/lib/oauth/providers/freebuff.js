@@ -92,25 +92,46 @@ const freebuff = {
     if (!data?.user?.authToken) {
       return { ok: true, data: { error: "authorization_pending" } };
     }
-    return { ok: true, data };
+
+    // The shared device-code poller uses the standard OAuth success marker
+    // (`access_token`). Freebuff's native response keeps the token under
+    // `user.authToken`, so normalize only the poll result and retain the
+    // original user object for mapTokens/profile fields.
+    return {
+      ok: true,
+      data: {
+        ...data,
+        access_token: data.user.authToken,
+        // The status response normally omits the original fingerprint fields;
+        // carry them through so mapTokens can persist the polling contract.
+        _freebuffFingerprintId: fingerprintId,
+        _freebuffFingerprintHash: fingerprintHash,
+        _freebuffExpiresAt: expiresAt,
+      },
+    };
   },
-  mapTokens: (tokens) => ({
-    accessToken: tokens.user.authToken,
-    // No refresh token exists — expired authToken means re-login (reconnect UX).
-    refreshToken: null,
-    expiresIn: null,
-    name: tokens.user.name || tokens.user.email,
-    displayName: tokens.user.name || tokens.user.email,
-    email: tokens.user.email || null,
-    providerSpecificData: {
-      authMethod: "device_login",
-      freebuffUserId: tokens.user.id,
-      // Required verbatim for status polling / logout (server-side HMAC chain).
-      fingerprintId: tokens.user.fingerprintId,
-      fingerprintHash: tokens.user.fingerprintHash,
-      fingerprintExpiresAt: tokens.user.expiresAt,
-    },
-  }),
+  mapTokens: (tokens) => {
+    const user = tokens?.user || {};
+    const accessToken = tokens?.access_token || user.authToken;
+    return {
+      accessToken,
+      // No refresh token exists — expired authToken means re-login (reconnect UX).
+      refreshToken: null,
+      expiresIn: null,
+      name: user.name || user.email,
+      displayName: user.name || user.email,
+      email: user.email || null,
+      providerSpecificData: {
+        authMethod: "device_login",
+        freebuffUserId: user.id,
+        // These values are returned by the code endpoint and carried through
+        // pollToken because the authorized status payload may omit them.
+        fingerprintId: tokens?._freebuffFingerprintId || user.fingerprintId,
+        fingerprintHash: tokens?._freebuffFingerprintHash || user.fingerprintHash,
+        fingerprintExpiresAt: tokens?._freebuffExpiresAt || user.expiresAt,
+      },
+    };
+  },
 };
 
 export default freebuff;
