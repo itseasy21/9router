@@ -42,24 +42,21 @@ const SESSION_EXPIRY_SAFETY_MS = 5000;
 const RUN_IDLE_TTL_MS = 600000; // retire a run after 10 idle minutes
 const MAX_ATTEMPTS = 2;
 
-// Freebuff validates the agent id against the selected model. These are the
-// exact root ids from Codebuff's FREEBUFF_ROOT_AGENT_ID_BY_MODEL map.
+// Agent IDs from OmniRoute's proven MODEL_TO_AGENT map (v3.8.51).
+// These match the exact agent ids accepted by the live upstream.
 const FREEBUFF_AGENT_BY_MODEL = Object.freeze({
-  "z-ai/glm-5.3-flash": "base2-free-glm-5-3-flash",
-  "openai/gpt-5.6-luna": "base2-free-luna",
-  "openai/gpt-5.6-luna-es": "base2-free-luna-es",
-  "deepseek/deepseek-v4-pro": "base2-free-deepseek",
   "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
-  "deepseek/deepseek-v4-pro-max": "base2-free-deepseek-pro-max",
-  "deepseek/deepseek-v4-flash-max": "base2-free-deepseek-flash-max",
-  "z-ai/glm-5.2": "base2-free-glm",
-  "anthropic/claude-fable-5": "base2-free-fable",
-  "crof/kimi-k3-eco": "base2-free-kimi-k3-eco",
-  "mimo/mimo-v2.5": "base2-free-mimo",
+  "deepseek/deepseek-v4-pro": "base2-free-deepseek",
+  "openai/gpt-5.6-luna": "base2-free-luna",
   "minimax/minimax-m3": "base2-free-minimax-m3",
-  "upstage/solar-pro4": "base2-free-solar-pro4",
+  "mimo/mimo-v2.5": "base2-free-mimo",
+  "z-ai/glm-5.2": "base2-free-glm",
+  "crof/kimi-k3-eco": "base2-free-kimi-k3-eco",
+  "anthropic/claude-fable-5": "base2-free-fable",
   "meta/muse-spark-1.2-contributor": "base2-free-muse-spark",
-  "ox/alpha": "base2-free-ox-alpha",
+  // Gemini models use the root agent
+  "google/gemini-2.5-flash-lite": "base2-free",
+  "google/gemini-3.1-flash-lite-preview": "base2-free",
 });
 
 function generateClientSessionId() {
@@ -107,6 +104,10 @@ export class FreebuffExecutor extends BaseExecutor {
     return this.config.baseUrl;
   }
 
+  // CLI-style User-Agent for session/run endpoints (required by upstream).
+  // The chat completions endpoint uses the SDK UA from config instead.
+  static CLI_USER_AGENT = "codebuff/0.1.0 (darwin-arm64)";
+
   buildHeaders(credentials, stream = true) {
     const headers = { ...this.config.headers };
     if (credentials.accessToken) {
@@ -118,13 +119,21 @@ export class FreebuffExecutor extends BaseExecutor {
     return headers;
   }
 
+  buildLifecycleHeaders(credentials) {
+    return {
+      Authorization: `Bearer ${credentials.accessToken || credentials.apiKey || ""}`,
+      "Content-Type": "application/json",
+      "User-Agent": FreebuffExecutor.CLI_USER_AGENT,
+    };
+  }
+
   // Return the exact root agent ID required by Freebuff for this model.
   agentForModel(model) {
     const modelId = String(model || "").replace(/\s*\([^()]+\)\s*$/, "").trim();
     return FREEBUFF_AGENT_BY_MODEL[modelId] || "base2-free";
   }
 
-  async upstreamFetch(path, { method = "POST", credentials, body = null, headers = {}, signal, proxyOptions, log } = {}) {
+  async upstreamFetch(path, { method = "POST", credentials, body = null, headers = {}, signal, proxyOptions, log, lifecycle = false } = {}) {
     // config.baseUrl already includes /api/v1/chat/completions; lifecycle
     // paths also include /api/v1, so derive the origin to avoid duplication.
     const base = this.config.baseUrl.replace(/\/api\/v1(?:\/.*)?$/, "");
@@ -132,7 +141,8 @@ export class FreebuffExecutor extends BaseExecutor {
     const allHeaders = {
       Authorization: `Bearer ${credentials.accessToken || credentials.apiKey || ""}`,
       Accept: "application/json",
-      "User-Agent": this.config.headers["User-Agent"],
+      // Session/run use CLI UA; chat uses SDK UA from config
+      "User-Agent": lifecycle ? FreebuffExecutor.CLI_USER_AGENT : this.config.headers["User-Agent"],
       ...headers,
     };
     if (method === "POST" && body !== null) {
@@ -148,7 +158,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
   // ---- Waiting-room session --------------------------------------------
 
-  async ensureSession({ credentials, signal, log, proxyOptions }) {
+  async ensureSession({ credentials, signal, log, proxyOptions, model }) {
     const state = this.getState(credentials);
     const now = Date.now();
     if (state.session?.status === "disabled") return "";
@@ -163,14 +173,14 @@ export class FreebuffExecutor extends BaseExecutor {
       const instanceId = await this.pollQueuedSession({ credentials, signal, log, proxyOptions });
       if (instanceId != null) return instanceId;
     }
-    return this.refreshSession({ credentials, signal, log, proxyOptions });
+    return this.refreshSession({ credentials, signal, log, proxyOptions, model });
   }
 
-  async refreshSession({ credentials, signal, log, proxyOptions }) {
+  async refreshSession({ credentials, signal, log, proxyOptions, model }) {
     const state = this.getState(credentials);
     if (state.sessionPending) return state.sessionPending;
     state.sessionPending = (async () => {
-      let responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions });
+      let responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions, model });
       for (let hop = 0; hop < 3; hop++) {
         const status = String(responseState.status || "").trim();
         if (status === "disabled") {
@@ -195,12 +205,12 @@ export class FreebuffExecutor extends BaseExecutor {
           state.session = { status: "queued", instanceId };
           const instance = await this.pollQueuedSession({ credentials, signal, log, proxyOptions, firstState: responseState });
           if (instance != null) return instance;
-          responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions });
+          responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions, model });
           continue;
         }
         // none / ended / superseded → create-or-refresh once more
         if (status === "none" || status === "ended" || status === "superseded") {
-          responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions });
+          responseState = await this.sessionRequest("POST", { credentials, signal, log, proxyOptions, model });
           continue;
         }
         throw new Error(`unexpected freebuff session status "${responseState.status}"`);
@@ -214,9 +224,10 @@ export class FreebuffExecutor extends BaseExecutor {
     }
   }
 
-  async sessionRequest(method, { credentials, signal, log, proxyOptions, instanceId = null }) {
+  async sessionRequest(method, { credentials, signal, log, proxyOptions, instanceId = null, model = null }) {
     const headers = {};
     if (method === "GET" && instanceId) headers["x-freebuff-instance-id"] = instanceId;
+    if (method === "POST" && model) headers["x-freebuff-model"] = model;
     const response = await this.upstreamFetch("/api/v1/freebuff/session", {
       method,
       credentials,
@@ -225,6 +236,7 @@ export class FreebuffExecutor extends BaseExecutor {
       signal,
       proxyOptions,
       log,
+      lifecycle: true,
     });
     if (response.status === 404) {
       // No waiting room deployed → treat as disabled and proceed.
@@ -315,6 +327,7 @@ export class FreebuffExecutor extends BaseExecutor {
       signal,
       proxyOptions,
       log,
+      lifecycle: true,
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -340,6 +353,7 @@ export class FreebuffExecutor extends BaseExecutor {
           totalCredits: 0,
         },
         proxyOptions,
+        lifecycle: true,
       });
     } catch {
       // Best-effort drain; upstream expires runs on its own.
@@ -378,7 +392,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        sessionInstanceId = await this.ensureSession({ credentials, signal, log, proxyOptions });
+        sessionInstanceId = await this.ensureSession({ credentials, signal, log, proxyOptions, model });
         run = await this.acquireRun(agentId, { credentials, signal, log, proxyOptions });
       } catch (error) {
         if (error.freebuffAuth) throw error;
@@ -391,7 +405,13 @@ export class FreebuffExecutor extends BaseExecutor {
 
       const url = this.buildUrl();
       const transformedBody = this.injectMetadata(body, model, run.id, sessionInstanceId);
-      const headers = this.buildHeaders(credentials, stream);
+      const headers = {
+        ...this.buildHeaders(credentials, stream),
+        // Freebuff upstream requires these headers on the chat request
+        ...(sessionInstanceId ? { "x-freebuff-instance-id": sessionInstanceId } : {}),
+        ...(run.id ? { "x-codebuff-run-id": run.id } : {}),
+        ...(agentId ? { "x-codebuff-agent-id": agentId } : {}),
+      };
       const bodyStr = JSON.stringify(transformedBody);
       log?.debug?.("FETCH", `FREEBUFF → ${url} | run=${run.id.slice(0, 8)}… | body=${bodyStr.length}B`);
 
