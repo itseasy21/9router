@@ -119,6 +119,7 @@
     "morphllm": "morph"
   },
   "idToAlias": {
+    "agentrouter": "agentrouter",
     "alicode": "alicode",
     "alicode-intl": "alicode-intl",
     "alims-intl": "alims-intl",
@@ -149,6 +150,7 @@
     "deepseek": "deepseek",
     "featherless": "featherless",
     "fireworks": "fireworks",
+    "freebuff": "freebuff",
     "gemini": "gemini",
     "gemini-cli": "gc",
     "github": "gh",
@@ -171,6 +173,7 @@
     "minimax-cn": "minimax-cn",
     "mistral": "mistral",
     "mmf": "mmf",
+    "modal": "modal",
     "morph": "morph",
     "nanobanana": "nanobanana",
     "nebius": "nebius",
@@ -204,6 +207,7 @@
   "modelKeys": [
     "af",
     "ag",
+    "agentrouter",
     "alicode",
     "alicode-intl",
     "alims-intl",
@@ -234,6 +238,7 @@
     "fal-ai",
     "featherless",
     "fireworks",
+    "freebuff",
     "gc",
     "gcli",
     "gemini",
@@ -260,6 +265,7 @@
     "minimax-cn",
     "mistral",
     "mmf",
+    "modal",
     "morph",
     "nanobanana",
     "nebius",

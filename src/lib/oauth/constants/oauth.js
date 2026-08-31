@@ -195,6 +195,36 @@ export const ZED_HOSTED_CONFIG = {
   oauthTimeoutMs: 600_000,
 };
 
+// Freebuff (freebuff.com) OAuth Configuration — fingerprint device login flow.
+//   1) POST /api/auth/cli/code {fingerprintId} → {loginUrl, fingerprintHash, expiresAt}
+//   2) Browser opens loginUrl; user signs in (code lives ~1 hour)
+//   3) GET /api/auth/cli/status?fingerprintId&fingerprintHash&expiresAt every 5s
+//      → 401 while pending; {user:{id,email,name,authToken,...}} once authorized
+// fingerprintHash is computed server-side (SHA-256 over serverSecret +
+// fingerprintId + expiresAt) and must be persisted byte-for-byte — a clock-skew
+// bug on their side made codes permanently reject when expiresAt drifts.
+// There is no refresh token: authToken is long-lived; expiry means re-login.
+export const FREEBUFF_CONFIG = {
+  ...PROVIDER_OAUTH["freebuff"],
+  loginCodeUrl:
+    process.env.FREEBUFF_LOGIN_CODE_URL ||
+    PROVIDER_OAUTH["freebuff"]?.loginCodeUrl ||
+    "https://freebuff.com/api/auth/cli/code",
+  loginStatusUrl:
+    process.env.FREEBUFF_LOGIN_STATUS_URL ||
+    PROVIDER_OAUTH["freebuff"]?.loginStatusUrl ||
+    "https://freebuff.com/api/auth/cli/status",
+  logoutUrl:
+    process.env.FREEBUFF_LOGOUT_URL ||
+    PROVIDER_OAUTH["freebuff"]?.logoutUrl ||
+    "https://freebuff.com/api/auth/cli/logout",
+  websiteUrl:
+    process.env.FREEBUFF_WEBSITE_URL ||
+    PROVIDER_OAUTH["freebuff"]?.websiteUrl ||
+    "https://freebuff.com",
+  oauthTimeoutMs: 600_000,
+};
+
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
@@ -223,4 +253,5 @@ export const PROVIDERS = {
   TRAE: "trae",
   WINDSURF: "windsurf",
   ZED: "zed",
+  FREEBUFF: "freebuff",
 };
