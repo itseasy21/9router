@@ -42,9 +42,9 @@ const SESSION_EXPIRY_SAFETY_MS = 5000;
 const RUN_IDLE_TTL_MS = 600000; // retire a run after 10 idle minutes
 const MAX_ATTEMPTS = 2;
 
-// Agent IDs for the free tier. Non-Gemini models (DeepSeek, MiMo, etc.)
-// require a Go TLS fingerprint (JA3) — Node.js undici is rejected with
-// free_mode_cli_required. Only Gemini models work from Node.js.
+// Agent IDs used by the official Freebuff client. Premium models require the
+// official Bun/CLI TLS transport; Node's TLS stack is rejected with
+// free_mode_cli_required.
 const FREEBUFF_AGENT_BY_MODEL = Object.freeze({
   "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
   "deepseek/deepseek-v4-pro": "base2-free-deepseek",
@@ -384,15 +384,26 @@ export class FreebuffExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const state = this.getState(credentials);
-    const agentId = this.agentForModel(model);
+    if (!globalThis.Bun?.fetch && !proxyOptions?.vercelRelayUrl && !proxyOptions?.url && !proxyOptions?.connectionProxyUrl) {
+      throw Object.assign(
+        new Error("Freebuff premium models require running 9Router with Bun (use npm run start:bun)."),
+        { freebuffTransportRequired: true, status: 502 },
+      );
+    }
+    const requestedModel = String(model || "").replace(/^freebuff\//, "").trim();
+    const agentId = this.agentForModel(requestedModel);
+    console.info(`[FREEBUFF:REQUEST] model=${requestedModel} agent=${agentId} bun=${Boolean(globalThis.Bun?.fetch)} stream=${stream !== false}`);
     let run = null;
     let sessionInstanceId = "";
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        sessionInstanceId = await this.ensureSession({ credentials, signal, log, proxyOptions, model });
+        console.info(`[FREEBUFF:LIFECYCLE] attempt=${attempt} session-start model=${requestedModel}`);
+        sessionInstanceId = await this.ensureSession({ credentials, signal, log, proxyOptions, model: requestedModel });
+        console.info(`[FREEBUFF:LIFECYCLE] attempt=${attempt} session-ready instance=${sessionInstanceId ? `${sessionInstanceId.slice(0, 8)}…` : "none"}`);
         run = await this.acquireRun(agentId, { credentials, signal, log, proxyOptions });
+        console.info(`[FREEBUFF:LIFECYCLE] attempt=${attempt} run-ready run=${run.id.slice(0, 8)}… agent=${agentId}`);
       } catch (error) {
         if (error.freebuffAuth) throw error;
         lastError = error;
@@ -428,12 +439,14 @@ export class FreebuffExecutor extends BaseExecutor {
       }
 
       if (response.ok) {
+        console.info(`[FREEBUFF:CHAT] status=${response.status} model=${requestedModel} agent=${agentId}`);
         this.releaseRun(run);
         return { response, url, headers, transformedBody };
       }
 
       const errorBody = await response.text().catch(() => "");
       const message = errorMessage(errorBody);
+      console.error(`[FREEBUFF:CHAT_ERROR] status=${response.status} model=${requestedModel} agent=${agentId} message=${message.slice(0, 200)}`);
       this.releaseRun(run);
 
       if (response.status === 401) {
