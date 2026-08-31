@@ -63,16 +63,23 @@ function generateClientSessionId() {
   return Math.random().toString(36).substring(2, 15);
 }
 
-function errorMessage(bodyText) {
+function parseErrorDetails(bodyText) {
   try {
     const parsed = JSON.parse(bodyText);
-    const err = parsed?.error ?? parsed?.message;
-    if (typeof err === "string") return err;
-    if (err?.message) return String(err.message);
+    const value = parsed?.error ?? parsed?.message ?? parsed;
+    return {
+      message: typeof value === "string" ? value : String(value?.message || "") || bodyText.trim(),
+      status: parsed?.status || value?.status || "",
+      currentModel: parsed?.currentModel || value?.currentModel || "",
+      requestedModel: parsed?.requestedModel || value?.requestedModel || "",
+    };
   } catch {
-    /* not json */
+    return { message: (bodyText || "").trim(), status: "", currentModel: "", requestedModel: "" };
   }
-  return (bodyText || "").trim();
+}
+
+function errorMessage(bodyText) {
+  return parseErrorDetails(bodyText).message;
 }
 
 export class FreebuffExecutor extends BaseExecutor {
@@ -246,7 +253,14 @@ export class FreebuffExecutor extends BaseExecutor {
     }
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(`freebuff session request failed: ${response.status} ${errorMessage(text)}`);
+      const details = parseErrorDetails(text);
+      if (response.status === 409 && details.status === "model_locked") {
+        throw Object.assign(
+          new Error(`freebuff model locked: ${details.currentModel || "another model"} is active; requested ${details.requestedModel || "this model"}`),
+          { modelLocked: true, currentModel: details.currentModel, requestedModel: details.requestedModel, status: response.status },
+        );
+      }
+      throw new Error(`freebuff session request failed: ${response.status} ${details.message}`);
     }
     const parsed = await response.json().catch(() => null);
     if (!parsed?.status) throw new Error("freebuff session response missing status");
@@ -409,7 +423,7 @@ export class FreebuffExecutor extends BaseExecutor {
       } catch (error) {
         if (error.freebuffAuth) throw error;
         lastError = error;
-        if (error.waitingRoom || error.cooldown) throw error;
+        if (error.waitingRoom || error.cooldown || error.modelLocked) throw error;
         // Session/run bootstrap failed once → invalidate and retry.
         state.session = null;
         continue;
@@ -496,6 +510,7 @@ export class FreebuffExecutor extends BaseExecutor {
 export const __test__ = {
   generateClientSessionId,
   errorMessage,
+  parseErrorDetails,
   FREEBUFF_UPDATE_REQUIRED_ERRORS,
   SESSION_POLL_INTERVAL_MS,
   RUN_IDLE_TTL_MS,
