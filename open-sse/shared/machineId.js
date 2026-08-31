@@ -1,8 +1,11 @@
-import machineIdModule from "node-machine-id";
-// CommonJS interop: node-machine-id exposes machineIdSync via module.exports,
-// which Node's ESM wrapper surfaces only on the default export.
-const { machineIdSync } = machineIdModule;
+import * as machineIdModule from "node-machine-id";
 import crypto from "node:crypto";
+
+// node-machine-id is CommonJS. Under webpack the named export resolves
+// normally, under plain Node ESM it only exists on the default export —
+// support both so neither the Next build nor direct Node execution breaks.
+const machineIdSync =
+  machineIdModule.machineIdSync || machineIdModule.default?.machineIdSync;
 
 let cachedRawId = null;
 
