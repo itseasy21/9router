@@ -384,6 +384,8 @@ export class FreebuffExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const state = this.getState(credentials);
+    const hasToken = Boolean(credentials?.accessToken || credentials?.apiKey);
+    console.info(`[FREEBUFF:CREDENTIALS] present=${hasToken} source=${credentials?.accessToken ? "accessToken" : credentials?.apiKey ? "apiKey" : "none"}`);
     if (!globalThis.Bun?.fetch && !proxyOptions?.vercelRelayUrl && !proxyOptions?.url && !proxyOptions?.connectionProxyUrl) {
       throw Object.assign(
         new Error("Freebuff premium models require running 9Router with Bun (use npm run start:bun)."),
