@@ -35,19 +35,9 @@ export default {
     freeSessionUrl: "https://www.codebuff.com/api/v1/freebuff/session",
   },
   models: [
-    // Verified working models matching OmniRoute v3.8.51 MODEL_TO_AGENT
-    // and Freebuff-2API's curated list. The upstream free tier only honors
-    // specific agent+model combinations — unlisted combos return 403.
-    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-    { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-    { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna" },
-    { id: "minimax/minimax-m3", name: "MiniMax M3" },
-    { id: "mimo/mimo-v2.5", name: "MiMo 2.5" },
-    { id: "z-ai/glm-5.2", name: "GLM 5.2" },
-    { id: "crof/kimi-k3-eco", name: "Kimi K3" },
-    { id: "anthropic/claude-fable-5", name: "Claude Fable 5" },
-    { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2" },
-    // Gemini models (confirmed working by Freebuff-2API)
+    // Only models confirmed working from Node.js (TLS fingerprint limits
+    // non-Gemini models to Go-only clients like Freebuff2API). The upstream
+    // free tier accepts these via the base2-free root agent.
     { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
     { id: "google/gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
   ],

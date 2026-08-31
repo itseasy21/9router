@@ -42,19 +42,10 @@ const SESSION_EXPIRY_SAFETY_MS = 5000;
 const RUN_IDLE_TTL_MS = 600000; // retire a run after 10 idle minutes
 const MAX_ATTEMPTS = 2;
 
-// Agent IDs from OmniRoute's proven MODEL_TO_AGENT map (v3.8.51).
-// These match the exact agent ids accepted by the live upstream.
+// Agent IDs for the free tier. Non-Gemini models (DeepSeek, MiMo, etc.)
+// require a Go TLS fingerprint (JA3) — Node.js undici is rejected with
+// free_mode_cli_required. Only Gemini models work from Node.js.
 const FREEBUFF_AGENT_BY_MODEL = Object.freeze({
-  "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
-  "deepseek/deepseek-v4-pro": "base2-free-deepseek",
-  "openai/gpt-5.6-luna": "base2-free-luna",
-  "minimax/minimax-m3": "base2-free-minimax-m3",
-  "mimo/mimo-v2.5": "base2-free-mimo",
-  "z-ai/glm-5.2": "base2-free-glm",
-  "crof/kimi-k3-eco": "base2-free-kimi-k3-eco",
-  "anthropic/claude-fable-5": "base2-free-fable",
-  "meta/muse-spark-1.2-contributor": "base2-free-muse-spark",
-  // Gemini models use the root agent
   "google/gemini-2.5-flash-lite": "base2-free",
   "google/gemini-3.1-flash-lite-preview": "base2-free",
 });
