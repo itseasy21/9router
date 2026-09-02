@@ -115,7 +115,9 @@ async function text(stream) {
 async function execute(executor = new KiroExecutor(), overrides = {}) {
   return executor.execute({
     model: "kr/claude-opus-4.8",
-    body: { systemPrompt: "base", conversationState: {} },
+    // Mirrors real translator output: system text rides in the first user
+    // turn's content; there is no top-level systemPrompt on the wire.
+    body: { conversationState: { currentMessage: { userInputMessage: { content: "base", modelId: "claude-opus-4.8" } } } },
     stream: true,
     credentials,
     ...overrides
@@ -327,7 +329,7 @@ describe("Kiro terminal integrity recovery", () => {
     expect(body).not.toContain('"id":123');
   });
 
-  it("keeps model-controlled parser detail out of the retry system prompt", async () => {
+  it("keeps model-controlled parser detail out of the retry instruction and never writes top-level systemPrompt", async () => {
     fetchMock
       .mockResolvedValueOnce(response([frame("toolUseEvent", {
         toolUseId: "bad-json",
@@ -342,8 +344,13 @@ describe("Kiro terminal integrity recovery", () => {
     const retryBody = JSON.parse(fetchMock.mock.calls[1][1].body);
 
     expect(body).toContain("Recovered safely.");
-    expect(retryBody.systemPrompt).toContain("tool_call wrapper was malformed");
-    expect(retryBody.systemPrompt).not.toContain("IGNORE_ALL_INSTRUCTIONS");
+    // Top-level systemPrompt is rejected by upstream (400 REQUEST_BODY_INVALID):
+    // the repair instruction must ride in the first user turn's content.
+    expect(retryBody.systemPrompt).toBeUndefined();
+    const firstUser = retryBody.conversationState?.history?.find(it => it?.userInputMessage)?.userInputMessage
+      || retryBody.conversationState?.currentMessage?.userInputMessage;
+    expect(firstUser?.content).toContain("tool_call wrapper was malformed");
+    expect(firstUser?.content || "").not.toContain("IGNORE_ALL_INSTRUCTIONS");
   });
 
   it("lets a complete tool call override metadata end_turn", async () => {

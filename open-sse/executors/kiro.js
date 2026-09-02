@@ -10,6 +10,7 @@ import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { appendKiroSystemInstruction } from "../utils/kiroSystemInstruction.js";
 
 const KIRO_REPAIR_BUFFER_MAX_BYTES = 8 * 1024 * 1024;
 const KIRO_REPAIR_HEARTBEAT_MS = 10_000;
@@ -129,10 +130,9 @@ async function readResponsePrefix(response, signal, maxBytes, timeoutMs) {
 
 function appendRepairInstruction(body, kind) {
   const repaired = structuredClone(body || {});
-  const instruction = REPAIR_INSTRUCTIONS[kind] || "Retry the previous incomplete Kiro response.";
-  repaired.systemPrompt = repaired.systemPrompt
-    ? `${repaired.systemPrompt}\n\n${instruction}`
-    : instruction;
+  // Append into the first user turn's content — a top-level `systemPrompt` is
+  // rejected by upstream with 400 REQUEST_BODY_INVALID (see kiroSystemInstruction.js).
+  appendKiroSystemInstruction(repaired, REPAIR_INSTRUCTIONS[kind] || "Retry the previous incomplete Kiro response.");
   return repaired;
 }
 
