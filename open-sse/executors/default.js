@@ -174,6 +174,17 @@ export class DefaultExecutor extends BaseExecutor {
       headers["Anthropic-Beta"] = selectAnthropicBeta(model);
     }
 
+    // Claude-Code wire-image relays (agentrouter): append the 1M-context beta for
+    // opus-5 — mirrors what the real CC client sends and unlocks native 1M context.
+    if (model && /claude.*opus-5/i.test(model) && !/context-1m/i.test(headers["Anthropic-Beta"] || headers["anthropic-beta"] || "")) {
+      for (const betaKey of ["Anthropic-Beta", "anthropic-beta"]) {
+        if (headers[betaKey]) {
+          headers[betaKey] = `${headers[betaKey]},context-1m-2025-08-07`;
+          break;
+        }
+      }
+    }
+
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "";

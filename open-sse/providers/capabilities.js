@@ -217,10 +217,12 @@ export const PROVIDER_CAPABILITIES = {
   // AgentRouter — Claude wire endpoint for ALL models (internal routing translates).
   // Non-claude ids must still emit claude thinking{} blocks, not their native
   // reasoning_effort, or AgentRouter rejects them. claude-opus-5 keeps claude-adaptive.
+  // glm-5.3 uses the adaptive effort model (output_config.effort, supports max —
+  // see PATTERN_THINKING in thinkingLevels.js) instead of budget 128k.
   "agentrouter": {
     "gpt-5.6-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
     "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 50000 },
-    "glm-5.3":          { reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 128000 },
+    "glm-5.3":          { reasoning: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   },
   // Modal — OpenAI-compatible gateway. GLM-5.3-Flash is multimodal + reasons via
   // reasoning:{enabled,effort}. The `*glm*` pattern would mis-match it to `zai` and

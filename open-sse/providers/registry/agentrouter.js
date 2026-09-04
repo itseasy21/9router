@@ -15,6 +15,7 @@ export default {
   transport: {
     baseUrl: "https://agentrouter.org/v1/messages",
     format: "claude",
+    urlSuffix: "?beta=true",
     headers: { ...CLAUDE_CLI_SPOOF_HEADERS },
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
   },

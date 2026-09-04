@@ -39,6 +39,11 @@ const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh
 
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
+  // AgentRouter relays to upstream models that keep their native effort limits:
+  // GLM-5.3 accepts max (z.ai enum low|high|max — no none/disable); GPT-5.6 Sol
+  // tops out at xhigh (upstream rejects max) via the claude-adaptive bridge.
+  { provider: "agentrouter", pattern: "glm-5.3*",     levels: ["low", "high", "max"] },
+  { provider: "agentrouter", pattern: "gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh"] },
   // opencode Muse models route to /zen/v1/responses (reasoning.effort) which
   // expects the standard OpenAI enum none|minimal|low|medium|high|xhigh —
   // the zen gateway's none|low|medium|high|max is rejected with 400 max→xhigh.

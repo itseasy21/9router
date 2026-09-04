@@ -340,7 +340,7 @@ export async function POST(request) {
             const authHeader = provider === "agentrouter"
               ? { "Authorization": `Bearer ${apiKey}` }
               : { "x-api-key": apiKey };
-            const res = await fetch(cfg.baseUrl, {
+            const res = await fetch(cfg.urlSuffix ? `${cfg.baseUrl}${cfg.urlSuffix}` : cfg.baseUrl, {
               method: "POST",
               headers: {
                 ...authHeader,
