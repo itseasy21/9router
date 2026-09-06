@@ -290,7 +290,9 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       // Clamp to the model's supported levels: official Claude's output_config.effort
       // enum has max but not xhigh (xhigh→high), while relays like AgentRouter forward
       // native effort limits — GLM-5.3 accepts max, GPT-5.6 Sol stops at xhigh (max→xhigh).
+      // "auto" resolves to high — output_config.effort rejects "auto" (#3792).
       let adaptiveLevel = toLevel(eff);
+      if (adaptiveLevel === "auto") adaptiveLevel = "high";
       if (adaptiveLevel === "ultra") adaptiveLevel = supportedLevels?.includes("max") ? "max" : "xhigh";
       if (adaptiveLevel === "xhigh" && supportedLevels?.length && !supportedLevels.includes("xhigh")) adaptiveLevel = "high";
       if (adaptiveLevel === "max" && supportedLevels?.length && !supportedLevels.includes("max")) {
