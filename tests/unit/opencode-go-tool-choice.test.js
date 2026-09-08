@@ -162,7 +162,10 @@ describe("opencode-go muse-spark reasoning_effort conversion (Responses endpoint
   });
 
   it("does not convert for another provider on the Responses endpoint", () => {
-    const ex = new DefaultExecutor("openai");
+    // NOTE(custom-v): provider "openai" intentionally converts reasoning_effort →
+    // reasoning.effort in our branch, so use a neutral provider to assert that the
+    // Go Muse conversion is gated to opencode-go.
+    const ex = new DefaultExecutor("groq");
     const out = ex.transformRequest("muse-spark-1.3-contributor", reasoningBody("xhigh"), true, {
       runtimeTransport: GO_RESPONSES,
     });
