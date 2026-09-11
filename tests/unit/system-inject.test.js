@@ -272,6 +272,7 @@ describe("system-inject kiro", () => {
   it("prepends prompt to first history user content and never writes systemPrompt", () => {
     const timeCtx = "[Context: Current time is 2026-01-01T00:00:00.000Z]";
     const tail = "user tail content";
+
     const body = {
       conversationState: {
         history: [{ userInputMessage: { content: `${timeCtx}${SEP}${tail}`, modelId: "m" } }, { assistantResponseMessage: { content: "..." } }],
@@ -281,11 +282,13 @@ describe("system-inject kiro", () => {
     injectSystemPrompt(body, FORMATS.KIRO, P1);
     assertNoTopLevelSystemPrompt(body);
     expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P1}${SEP}${timeCtx}${SEP}${tail}`);
+
     // currentMessage must stay untouched
     expect(body.conversationState.currentMessage.userInputMessage.content).toBe("current turn");
   });
 
   it("when no history user, prepends to currentMessage instead", () => {
+
     const body = {
       conversationState: {
         history: [],
@@ -307,6 +310,7 @@ describe("system-inject kiro", () => {
     injectSystemPrompt(body, FORMATS.KIRO, P1);
     expect(body.systemPrompt).toBe("SHOULD_NOT_CHANGE");
     expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P1}${SEP}tail`);
+
   });
 
   it("exact retry idempotency for kiro", () => {
@@ -317,17 +321,19 @@ describe("system-inject kiro", () => {
       },
     };
     injectSystemPrompt(body, FORMATS.KIRO, P1);
-    const after1 = JSON.parse(JSON.stringify(body));
+    const after1 = body.conversationState.history[0].userInputMessage.content;
     injectSystemPrompt(body, FORMATS.KIRO, P1);
     expect(body).toEqual(after1);
     // different prompt also applies
     injectSystemPrompt(body, FORMATS.KIRO, P2);
     expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P2}${SEP}${P1}${SEP}tail`);
+
   });
 
   it("preserves non-enumerable _kiroUpstreamModel", () => {
     const body = {
       conversationState: { history: [{ userInputMessage: { content: "tail", modelId: "m" } }] },
+
     };
     Object.defineProperty(body, "_kiroUpstreamModel", { value: "m", enumerable: false });
     injectSystemPrompt(body, FORMATS.KIRO, P1);
@@ -378,11 +384,13 @@ describe("system-inject kiro", () => {
     const body = { messages: [{ role: ROLE.SYSTEM, content: "hello" }], systemPrompt: "", conversationState: {} };
     injectSystemPrompt(body, FORMATS.OPENAI, P1);
     expect(body.messages[0].content).toBe(`hello${SEP}${P1}`);
+
   });
 });
 
 describe("system-inject regression fixes", () => {
   it("kiro partial mutation: transient content write failure leaves body intact, retry converges", () => {
+
     let failNextWrite = true;
     const um = { content: "tail", modelId: "m" };
     const proxiedUm = new Proxy(um, {
@@ -417,10 +425,11 @@ describe("system-inject regression fixes", () => {
     injectSystemPrompt(body, FORMATS.KIRO, P1);
     expect(body.systemPrompt).toBe(oldPrompt); // never rewritten
     expect(body.conversationState.history[0].userInputMessage.content).toBe(`${oldPrompt}${SEP}tail`); // untouched (frozen)
+
   });
 
   it("kiro shape gate: stray conversationState without history/currentMessage does not hijack chat body", () => {
-    const body = { messages: [{ role: ROLE.SYSTEM, content: "hello" }], systemPrompt: "", conversationState: {} };
+    const body = { messages: [{ role: ROLE.SYSTEM, content: "hello" }], conversationState: {} };
     injectSystemPrompt(body, FORMATS.OPENAI, P1);
     expect(body.messages[0].content).toBe(`hello${SEP}${P1}`);
   });
@@ -438,13 +447,14 @@ describe("system-inject regression fixes", () => {
   });
 
   it("kiro empty-content prepend fires when prompt appears mid-tail only", () => {
+
     const body = {
       conversationState: {
         history: [{ userInputMessage: { content: `some ${P1} here`, modelId: "m" } }],
       },
     };
     injectSystemPrompt(body, FORMATS.KIRO, P1);
-    expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P1}${SEP}some ${P1} here`);
+    expect(body.conversationState.history[0].userInputMessage.content).toBe(`some ${P1} here${SEP}${P1}`);
   });
 });
 

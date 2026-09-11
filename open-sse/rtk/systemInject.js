@@ -14,7 +14,7 @@ export function injectSystemPrompt(body, format, prompt) {
     if (!body || !prompt) return;
     if (typeof body !== "object") return;
 
-    // Kiro wire shape is unique (conversationState/systemPrompt) — handle directly.
+    // Kiro wire shape is unique (conversationState) — handle directly.
     if (isKiroBody(body) || format === FORMATS.KIRO) {
       injectKiroSystem(body, prompt);
       return;
@@ -62,10 +62,13 @@ export function injectSystemPrompt(body, format, prompt) {
 
 function isKiroBody(body) {
   if (!body || typeof body !== "object") return false;
-  if (typeof body.systemPrompt !== "string") return false;
   const cs = body.conversationState;
   if (!cs || typeof cs !== "object") return false;
-  return Array.isArray(cs.history) || !!(cs.currentMessage && typeof cs.currentMessage === "object");
+  // A top-level `systemPrompt` used to be the marker, but the Kiro translator no
+  // longer emits it (kiro.dev rejects the field), so gate on the turn shape.
+  const historyTurn = Array.isArray(cs.history)
+    && cs.history.some(it => it && (it.userInputMessage || it.assistantResponseMessage));
+  return historyTurn || !!(cs.currentMessage && cs.currentMessage.userInputMessage);
 }
 
 // Exact idempotency: prompt present as its own SEP-delimited segment (or the
