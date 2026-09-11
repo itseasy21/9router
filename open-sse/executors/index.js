@@ -29,6 +29,7 @@ import { DevinCliExecutor } from "./devin-cli.js";
 import { ModalExecutor } from "./modal.js";
 import { GlmExecutor } from "./glm.js";
 import { FreebuffExecutor } from "./freebuff.js";
+import { AgentRouterExecutor } from "./agentrouter.js";
 
 const executors = {
   glm: new GlmExecutor(),
@@ -66,6 +67,7 @@ const executors = {
   "devin-cli": new DevinCliExecutor(),
   modal: new ModalExecutor(),
   freebuff: new FreebuffExecutor(),
+  agentrouter: new AgentRouterExecutor(),
 };
 
 const defaultCache = new Map();

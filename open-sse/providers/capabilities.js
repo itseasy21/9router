@@ -266,6 +266,9 @@ export const PROVIDER_CAPABILITIES = {
     "gpt-5.6-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
     "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 50000 },
     "glm-5.3":          { reasoning: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+    // gpt-6-astra targets AgentRouter /v1/responses (chat relay rejects tools + effort).
+    // Reasoning via OpenAI reasoning.effort on the Responses wire — same enum as codex gpt-6.
+    "gpt-6-astra":      { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 },
   },
   // Modal — OpenAI-compatible gateway. GLM-5.3-Flash is multimodal + reasons via
   // reasoning:{enabled,effort}. The `*glm*` pattern would mis-match it to `zai` and
