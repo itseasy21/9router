@@ -321,7 +321,7 @@ describe("system-inject kiro", () => {
       },
     };
     injectSystemPrompt(body, FORMATS.KIRO, P1);
-    const after1 = body.conversationState.history[0].userInputMessage.content;
+    const after1 = JSON.parse(JSON.stringify(body));
     injectSystemPrompt(body, FORMATS.KIRO, P1);
     expect(body).toEqual(after1);
     // different prompt also applies
@@ -454,7 +454,7 @@ describe("system-inject regression fixes", () => {
       },
     };
     injectSystemPrompt(body, FORMATS.KIRO, P1);
-    expect(body.conversationState.history[0].userInputMessage.content).toBe(`some ${P1} here${SEP}${P1}`);
+    expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P1}${SEP}some ${P1} here`);
   });
 });
 

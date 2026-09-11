@@ -105,8 +105,10 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
     expect(headers.TokenType).toBe("EXTERNAL_IDP");
     expect(headers.tokentype).toBeUndefined();
 
+    // #3776: q-first is now safe for every auth method (CLIRO parity) —
+    // Amazon surfaces reject foreign tokens with fall-through 401/403.
     expect(executor.buildUrl("claude-sonnet-4.5", true, 0, credentials)).toBe(
-      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
+      "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
     );
   });
 
