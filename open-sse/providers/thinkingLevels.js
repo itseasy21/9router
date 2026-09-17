@@ -70,6 +70,11 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   { provider: "codebuddy-cn", pattern: "hy3*",         levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4*",         levels: ["high"] },
+  // NVIDIA NIM serves GLM-5.3 models on the OpenAI wire and accepts the full
+  // effort enum (verified live: none|minimal|low|medium|high|xhigh|max all 200,
+  // only "auto" rejected) — include max so the client level passes through
+  // instead of clamping to xhigh.
+  { provider: "nvidia", pattern: "z-ai/glm-5.3*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.

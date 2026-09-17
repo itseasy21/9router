@@ -109,7 +109,12 @@ export const MODEL_CAPABILITIES = {
 
   // GLM vision variants (text GLM has no vision) — 5.3-Flash and 5V-Turbo are
   // natively multimodal per z.ai, and 5.3-Flash carries the full 1M window.
-  "glm-5.3-flash":     { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 },
+  // thinkingEffortSupported matches the *glm-5.3* pattern entry: the model reads
+  // reasoning_effort on OpenAI-compatible relays too (NVIDIA NIM verified live:
+  // none|minimal|low|medium|high|xhigh|max all 200, only "auto" rejected). Without
+  // this flag the zai branch omits reasoning_effort entirely and NIM ignores the
+  // level intent — the request logs as THINK:auto instead of the client's level.
+  "glm-5.3-flash":     { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 131072 },
   "glm-4.6v":          { vision: true, videoInput: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
   "glm-4.5v":          { vision: true, videoInput: true, reasoning: true, thinkingFormat: "zai", contextWindow: 64000, maxOutput: 16384 },
 
@@ -159,7 +164,16 @@ const CODEX_GPT_56_DEFAULT_CAPS = { vision: true, reasoning: true, search: true,
 export const PROVIDER_CAPABILITIES = {
   // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM native `thinking` field.
   // Force openai reasoning_effort format for its reasoning models. #issue
+  //
+  // GLM-5.3 models keep the `zai` format (thinking:{type:enabled} + reasoning_effort):
+  // the plain-openai branch would emit reasoning_effort:"auto" for auto intent, which
+  // NIM rejects (verified: enum is none|minimal|low|medium|high|xhigh|max — no auto).
+  // thinkingCanDisable:false because NIM 400s on enable_thinking ("Unsupported
+  // parameter(s)") and ignores reasoning_effort:"none" — thinking always runs, so
+  // "none" clamps to minimal instead of sending an unsupported field.
   "nvidia": {
+    "z-ai/glm-5.3":       { reasoning: true, thinkingFormat: "zai", thinkingEffortSupported: true, thinkingCanDisable: false, contextWindow: 200000, maxOutput: 128000 },
+    "z-ai/glm-5.3-flash": { reasoning: true, thinkingFormat: "zai", thinkingEffortSupported: true, thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
     "minimaxai/minimax-m2.7": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
     "minimaxai/minimax-m3": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 131072 },
     "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
