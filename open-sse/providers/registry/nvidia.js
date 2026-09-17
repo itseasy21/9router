@@ -22,12 +22,14 @@ export default {
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
   },
   models: [
-    { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7" },
-    { id: "minimaxai/minimax-m3", name: "MiniMax M3" },
+    // LLM ids verified against the live catalog (GET /v1/models) — NVIDIA serves dotted
+    // version separators (z-ai/glm-5.3) and 404s on dash variants (z-ai/glm-5-3).
+    { id: "z-ai/glm-5.3", name: "GLM 5.3" },
+    { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash" },
     { id: "z-ai/glm-5.2", name: "GLM 5.2" },
-    { id: "deepseek-ai/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-    { id: "deepseek-ai/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek-ai/deepseek-v4-flash-0731", name: "DeepSeek V4 Flash 0731" },
     { id: "moonshotai/kimi-k2.6", name: "Kimi K2.6" },
+    { id: "moonshotai/kimi-k3", name: "Kimi K3" },
     { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "Nemotron 3 Ultra" },
     { id: "nvidia/nv-embedqa-e5-v5", name: "NV EmbedQA E5 v5", kind: "embedding" },
     { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B", params: ["language"], kind: "stt" },
