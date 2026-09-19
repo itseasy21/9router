@@ -28,6 +28,7 @@ const FORMAT_LEVELS = {
   kimi: L.levelMax,
   opencode: L.levelMax,   // zen gateway enum: none|low|medium|high|max (no xhigh/minimal)
   deepseek: L.hiMax,
+  commandcode: ["none", "low", "medium", "high", "xhigh", "max"],
   minimax: L.onOff,
   hunyuan: L.base,
   step: L.base,
@@ -58,6 +59,10 @@ const PATTERN_THINKING = [
   // Ollama GPT-OSS only supports low/medium/high (no max, per Ollama docs)
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
+  // DeepSeek v4.* (Alibaba MaaS, probed live): effort low|medium|high|xhigh|max
+  // all 200 via output_config.effort; "none" is a 400 on the anthropic route
+  // (disable thinking instead). none kept for the picker = disable.
+  { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
   // codebuddy-cn per-model effort sets — the server's product-config payload
   // publishes `reasoning.supportedEfforts` per model. NOTE: the chat endpoint
   // accepts any level you send (probed none/minimal/low/medium/high/xhigh/max
@@ -75,6 +80,8 @@ const PATTERN_THINKING = [
   // only "auto" rejected) — include max so the client level passes through
   // instead of clamping to xhigh.
   { provider: "nvidia", pattern: "z-ai/glm-5.3*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // codebuddy-intl rides the same gateway catalog, so its deepseek levels match.
+  { provider: "codebuddy-intl", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
