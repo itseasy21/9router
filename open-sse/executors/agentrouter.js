@@ -34,10 +34,12 @@ export class AgentRouterExecutor extends DefaultExecutor {
     if (!isResponsesModel(model || body?.model)) return out;
 
     // Responses names the output cap max_output_tokens, not max_tokens.
+    // Floor 16: Responses API 400s below that (Claude Code pings send max_tokens:1).
     if (out.max_output_tokens === undefined) {
       if (out.max_completion_tokens !== undefined) out.max_output_tokens = out.max_completion_tokens;
       else if (out.max_tokens !== undefined) out.max_output_tokens = out.max_tokens;
     }
+    if (typeof out.max_output_tokens === "number" && out.max_output_tokens < 16) out.max_output_tokens = 16;
     delete out.max_tokens;
     delete out.max_completion_tokens;
 

@@ -492,6 +492,9 @@ export class OpenCodeExecutor extends BaseExecutor {
         if (body.max_completion_tokens !== undefined) body.max_output_tokens = body.max_completion_tokens;
         else if (body.max_tokens !== undefined) body.max_output_tokens = body.max_tokens;
       }
+      // Responses API floor: max_output_tokens must be >= 16 (400 invalid_request_error
+      // otherwise — e.g. Claude Code's topic-detection ping sends max_tokens:1).
+      if (typeof body.max_output_tokens === "number" && body.max_output_tokens < 16) body.max_output_tokens = 16;
       delete body.max_tokens;
       delete body.max_completion_tokens;
       normalizeOpencodeReasoning(model, body);
