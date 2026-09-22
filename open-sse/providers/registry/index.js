@@ -126,7 +126,7 @@ import p120 from "./fish-audio.js";
 import p121 from "./alitp-intl.js";
 import p122 from "./agentrouter.js";
 import p125 from "./modal.js";
-import p124 from "./xquik.js";
+import p127 from "./xquik.js";
 import p126 from "./freebuff.js";
 export default [
   p0,
@@ -253,8 +253,7 @@ export default [
   p120,
   p121,
   p122,
-  p123,
-  p124,
   p125,
+  p127,
   p126,
 ];

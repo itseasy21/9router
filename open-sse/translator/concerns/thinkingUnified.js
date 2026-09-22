@@ -10,7 +10,7 @@ import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel }
 // Map a target wire-format to its native thinking format (when capability has none).
 const FORMAT_TO_NATIVE = {
   openai: "openai",
-  "openai-responses": "openai-responses",
+  "openai-responses": "openai",
   "openai-response": "openai",
   codex: "openai",
   claude: "claude-budget",
@@ -19,8 +19,8 @@ const FORMAT_TO_NATIVE = {
   vertex: "gemini-budget",
   antigravity: "gemini-budget",
   kiro: "kiro",
-  ollama: "ollama",
   commandcode: "commandcode",
+  ollama: "ollama",
 };
 
 // Strip a trailing thinking suffix "model(value)" → "model" (no-op when absent).
@@ -80,7 +80,7 @@ export function extractThinking(body) {
     }
   }
 
-// Ollama shape — `think` at top level (boolean or string low/medium/high/max)
+  // Ollama shape — `think` at top level (boolean or string low/medium/high/max)
   if (body.think !== undefined) {
     const tv = body.think;
     if (tv === false) return { mode: "none" };
@@ -129,7 +129,6 @@ export const captureThinking = extractThinking;
 const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-budget", "claude-adaptive", "kiro"]);
 
 function resolveFormat(targetFormat, model, provider) {
-  if (targetFormat === "openai-responses") return "openai-responses";
   if (targetFormat === "commandcode") return "commandcode";
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
@@ -258,8 +257,8 @@ function stripAll(body) {
   delete body.thinkingConfig;
   delete body.enable_thinking;
   delete body.thinking_budget;
-  delete body.output_config;
   delete body.think;
+  delete body.output_config;
   if (body.generationConfig) delete body.generationConfig.thinkingConfig;
   if (body.request?.generationConfig) delete body.request.generationConfig.thinkingConfig;
   if (body.params && typeof body.params === "object") {
@@ -280,11 +279,6 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
       if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
-      break;
-    }
-    case "openai-responses": {
-      const effort = none && canDisable ? "none" : normalizeOpenAILevel(toLevel(eff), supportedLevels);
-      if (effort) body.reasoning = { effort, summary: "auto" };
       break;
     }
     case "claude-adaptive": {
@@ -365,24 +359,6 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       if (effort) body.reasoning_effort = effort;
       break;
     }
-    case "ollama": {
-      if (none && canDisable) { body.think = false; break; }
-      const out = toOllamaThink(eff, supportedLevels);
-      if (out !== null && out !== undefined) body.think = out;
-      break;
-    }
-    case "opencode": {
-      // opencode zen gateway enum on OpenAI-style reasoning_effort:
-      // none|low|medium|high|max. Verified live: xhigh/minimal/auto → 400
-      // "[1210] Invalid API parameter"; omitted field → upstream default.
-      if (none && canDisable) { body.reasoning_effort = "none"; break; }
-      const level = toLevel(eff);
-      if (!level || level === "auto") break;
-      body.reasoning_effort = level === "xhigh" || level === "ultra" ? "max"
-        : level === "minimal" ? "low"
-        : level;
-      break;
-    }
     case "minimax": {
       // M3 adaptive; M2.x cannot disable (handled via canDisable clamp).
       body.thinking = { type: none && canDisable ? "disabled" : "adaptive" };
@@ -409,11 +385,22 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       if (level) body.reasoning_effort = level;
       break;
     }
-    case "modal": {
-      // Modal GLM-5.3-Flash: reasoning:{enabled,effort}. "none" → enabled:false.
-      if (none && canDisable) { body.reasoning = { enabled: false }; break; }
+    case "ollama": {
+      if (none && canDisable) { body.think = false; break; }
+      const out = toOllamaThink(eff, supportedLevels);
+      if (out !== null && out !== undefined) body.think = out;
+      break;
+    }
+    case "opencode": {
+      // opencode zen gateway enum on OpenAI-style reasoning_effort:
+      // none|low|medium|high|max. Verified live: xhigh/minimal/auto → 400
+      // "[1210] Invalid API parameter"; omitted field → upstream default.
+      if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
-      body.reasoning = { enabled: true, effort: level && level !== "auto" ? normalizeOpenAILevel(level, supportedLevels) : "high" };
+      if (!level || level === "auto") break;
+      body.reasoning_effort = level === "xhigh" || level === "ultra" ? "max"
+        : level === "minimal" ? "low"
+        : level;
       break;
     }
     case "kiro":

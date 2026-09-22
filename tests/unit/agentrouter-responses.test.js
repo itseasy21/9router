@@ -139,6 +139,10 @@ describe("translation into the Responses wire", () => {
     expect(translated.input).toBeDefined();
     expect(translated.tools).toHaveLength(1);
     expect(translated.tools[0].name).toBe("bash");
-    expect(translated.reasoning).toEqual({ effort: "high", summary: "auto" });
+    // Post-0.5.85 architecture: translateRequest emits the OpenAI-style
+    // reasoning_effort; AgentRouterExecutor.transformRequest converts it to
+    // reasoning{effort, summary} on the Responses wire (covered above).
+    expect(translated.reasoning_effort).toBe("high");
+    expect(translated.reasoning).toBeUndefined();
   });
 });
