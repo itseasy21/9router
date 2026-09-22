@@ -407,10 +407,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -420,10 +420,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -434,10 +434,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -453,10 +453,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > clinepass → header
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -466,10 +466,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > clinepass → header
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -480,10 +480,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > clinepass → header
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.81",
+    "User-Agent": "9Router/0.5.85",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.81",
-    "X-CORE-VERSION": "0.5.81",
+    "X-CLIENT-VERSION": "0.5.85",
+    "X-CORE-VERSION": "0.5.85",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "darwin",
     "X-PLATFORM-VERSION": "v24.21.0",
@@ -922,7 +922,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "Shubhams-MacBook-Pro.local",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.81",
+    "X-Msh-Version": "0.5.85",
     "x-api-key": "<CRED>",
   },
   "nonStream": {
@@ -933,7 +933,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "Shubhams-MacBook-Pro.local",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.81",
+    "X-Msh-Version": "0.5.85",
     "x-api-key": "<CRED>",
   },
   "oauth": {
@@ -945,7 +945,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "Shubhams-MacBook-Pro.local",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.81",
+    "X-Msh-Version": "0.5.85",
     "x-api-key": "<CRED>",
   },
 }
@@ -1173,6 +1173,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > ollama → headers (
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > openai → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > opencode-zen → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -1832,6 +1851,13 @@ exports[`GOLDEN buildUrl (default executor providers) > openai → url (stream +
 {
   "nonStream": "https://api.openai.com/v1/responses",
   "stream": "https://api.openai.com/v1/responses",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > opencode-zen → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://opencode.ai/zen/v1/chat/completions",
+  "stream": "https://opencode.ai/zen/v1/chat/completions",
 }
 `;
 
