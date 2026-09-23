@@ -59,6 +59,7 @@ const PATTERN_THINKING = [
   // Ollama GPT-OSS only supports low/medium/high (no max, per Ollama docs)
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
+  { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // DeepSeek v4.* (Alibaba MaaS, probed live): effort low|medium|high|xhigh|max
   // all 200 via output_config.effort; "none" is a 400 on the anthropic route
   // (disable thinking instead). none kept for the picker = disable.

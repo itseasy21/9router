@@ -19,7 +19,8 @@ const STRIP_RULES = [
   { provider: "opencode", match: /muse/i, drop: ["max_tokens", "max_completion_tokens", "reasoning_effort"] },
   // MiMo Desktop Preview models (account-service route): content must be plain string,
   // rejects OpenAI content-part array. Cloud models keep their parts (mimo-v2-omni is multi-modal).
-  { provider: "xiaomi-mimo", match: /preview/i, flattenContent: true },  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+  { provider: "xiaomi-mimo", match: /preview/i, flattenContent: true },
+  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
   // VolcEngine Ark caps the Kimi family at max_tokens <= 32768, but the model's
   // advertised ceiling is far higher (Kimi-K2.7-Code resolves to maxOutput 262144),
   // so clampToModelMaxOutput alone leaves it uncapped and the request 400s with
