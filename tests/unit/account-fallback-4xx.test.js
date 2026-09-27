@@ -24,6 +24,22 @@ describe("checkFallbackError — request-scoped vs account-scoped failures", () 
     }
   });
 
+  it("falls back with a long cooldown on the agentrouter budget-pool 402", () => {
+    // Regression pin: agentrouter 402s on gpt AND claude models when the budget
+    // pool is exhausted — the combo must move to the next model/account.
+    const result = checkFallbackError(402, JSON.stringify({
+      error: {
+        message: "Budget pool quota has been exhausted. Please ask an administrator to increase the limit or select another budget pool.",
+        type: "bad_response_status_code",
+        param: "",
+        code: "insufficient_quota",
+      },
+    }));
+
+    expect(result.shouldFallback).toBe(true);
+    expect(result.cooldownMs).toBeGreaterThan(60 * 1000);
+  });
+
   it("still honours rate-limit / quota wording on any 4xx", () => {
     expect(checkFallbackError(400, "rate limit reached").shouldFallback).toBe(true);
     expect(checkFallbackError(422, "quota exceeded").shouldFallback).toBe(true);
