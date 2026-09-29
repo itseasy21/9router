@@ -312,6 +312,12 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*claude*opus-4.8*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
   { pattern: "*claude*sonnet-4.6*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
   { pattern: "*claude*sonnet-4.7*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
+  // Sonnet 5.x is adaptive like Opus 5 / Sonnet 4.6+ (exact ids claude-sonnet-5* are in
+  // MODEL_CAPABILITIES, but dotted variants like claude-sonnet-5.5 fall through to
+  // patterns). Without this, 5.5 hits the generic *claude*sonnet* → claude-budget and
+  // emits thinking.type.enabled, which Copilot and other Anthropic-compatible relays
+  // reject with 400 "Use thinking.type.adaptive and output_config.effort".
+  { pattern: "*claude*sonnet-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
   { pattern: "*claude*haiku*",  caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
   { pattern: "*claude*opus*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
   { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
