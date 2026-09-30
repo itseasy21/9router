@@ -179,7 +179,11 @@ export function extractKiroEffortLevel(body) {
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "none" || normalized === "off" || normalized === "disabled") return null;
-  if (normalized === "xhigh" || normalized === "max") return "high";
+  // Pass extended levels through: Kiro's Claude effort models (claude-opus-5.5,
+  // sonnet-5 family) accept the same adaptive effort enum as official Anthropic
+  // (low|medium|high|max, xhigh clamped to the official enum's ceiling).
+  if (normalized === "max") return "max";
+  if (normalized === "xhigh") return "high";
   if (["low", "medium", "high"].includes(normalized)) return normalized;
   return null;
 }
