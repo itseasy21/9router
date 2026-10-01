@@ -20,25 +20,34 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null) {
   const lowerError = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
   for (const rule of ERROR_RULES) {
-    const matchesText = rule.text && lowerError && lowerError.includes(rule.text);
-    const matchesStatus = rule.status && rule.status === status;
-    if (!matchesText && !matchesStatus) continue;
-
-    // Request-scoped failure (e.g. malformed body, unknown model): same body
-    // fails on every account — no rotation, no cooldown, no lock.
-    if (rule.shouldFallback === false) return { shouldFallback: false, cooldownMs: 0 };
-
-    if (rule.backoff) {
-      const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
-      return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+    if (rule.provider && rule.provider !== provider) continue;
+    // Text-based rule: match substring in error message
+    if (rule.text && lowerError && lowerError.includes(rule.text)) {
+      // Request-scoped failure (e.g. malformed body, unknown model): same body
+      // fails on every account — no rotation, no cooldown, no lock.
+      if (rule.shouldFallback === false) return { shouldFallback: false, cooldownMs: 0 };
+      if (rule.backoff) {
+        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
+        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+      }
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
-    return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+
+    // Status-based rule: match HTTP status code
+    if (rule.status && rule.status === status) {
+      if (rule.shouldFallback === false) return { shouldFallback: false, cooldownMs: 0 };
+      if (rule.backoff) {
+        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
+        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+      }
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+    }
   }
 
   // Request-scoped client errors that matched no rule above: a 400 caused by the

@@ -46,8 +46,11 @@ const USAGE_HANDLERS = {
   "qoder-cn": (c) => getQoderUsageFor(c),
   iflow: (c) => getIflowUsage(c.accessToken),
   ollama: (c) => getOllamaUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
-  glm: (c) => getGlmUsage(c, c.proxyOptions),
-  "glm-cn": (c) => getGlmUsage(c, c.proxyOptions),
+  // OAuth connections store the coding-plan key on accessToken (no apiKey).
+  // The connection object rides along so legacy zcode-JWT coding-plan
+  // connections can keep using their dedicated billing endpoints.
+  glm: (c) => getGlmUsage(c.apiKey || c.accessToken, c.provider, c.proxyOptions, c),
+  "glm-cn": (c) => getGlmUsage(c.apiKey || c.accessToken, c.provider, c.proxyOptions, c),
   minimax: (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
   "minimax-cn": (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),

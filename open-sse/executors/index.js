@@ -29,7 +29,6 @@ import { DefaultExecutor } from "./default.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { ModalExecutor } from "./modal.js";
 import { GlmExecutor } from "./glm.js";
-import { FreebuffExecutor } from "./freebuff.js";
 import { AgentRouterExecutor } from "./agentrouter.js";
 
 const executors = {
@@ -69,7 +68,6 @@ const executors = {
   windsurf: new WindsurfExecutor(),
   "devin-cli": new DevinCliExecutor(),
   modal: new ModalExecutor(),
-  freebuff: new FreebuffExecutor(),
   agentrouter: new AgentRouterExecutor(),
 };
 
@@ -116,4 +114,3 @@ export { default as ZedExecutor } from "./zed.js";
 export { default as WindsurfExecutor } from "./windsurf.js";
 export { DevinCliExecutor } from "./devin-cli.js";
 export { GlmExecutor } from "./glm.js";
-export { FreebuffExecutor } from "./freebuff.js";

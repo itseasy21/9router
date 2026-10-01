@@ -65,11 +65,17 @@ describe("agentrouter claude-adaptive effort passthrough (glm-5.3)", () => {
 });
 
 describe("official claude adaptive unchanged (regression guard)", () => {
-  it("opus-4.7 keeps xhigh→high mapping (Anthropic output_config enum has no xhigh)", () => {
-    const out = apply("claude-opus-4.7", { reasoning_effort: "xhigh" }, "claude");
+  // xhigh is model-gated since the upstream merge: opus-4.6 lacks it (clamps to
+  // high), opus-4.7+ advertises it (passes through).
+  it("opus-4.6 clamps xhigh→high (Anthropic output_config enum has no xhigh on 4.6)", () => {
+    const out = apply("claude-opus-4.6", { reasoning_effort: "xhigh" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });
   });
-  it("opus-4.7 max stays max (levelMax supported)", () => {
+  it("opus-4.7 passes xhigh through (model supports it)", () => {
+    const out = apply("claude-opus-4.7", { reasoning_effort: "xhigh" }, "claude");
+    expect(out.output_config).toEqual({ effort: "xhigh" });
+  });
+  it("opus-4.7 max stays max (budgetX supported)", () => {
     const out = apply("claude-opus-4.7", { reasoning_effort: "max" }, "claude");
     expect(out.output_config).toEqual({ effort: "max" });
   });

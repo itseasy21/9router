@@ -50,6 +50,13 @@ export default {
     // accepted (→ 400 INVALID_MODEL_ID) and the variants themselves doubled
     // as a way to set `thinking`/`agentic` that is now driven by request params
     // + suffix handling on the translator side.
+    // Opus 5.5 — experimental preview, 1M context, 2x credits (#4410)
+    // Announced 2026-09-22; confirmed in kiro.dev session UI.
+    { id: "claude-opus-5.5", name: "Claude Opus 5.5" },
+    { id: "claude-opus-5.5-thinking", name: "Claude Opus 5.5 (Thinking)" },
+    { id: "claude-opus-5.5-agentic", name: "Claude Opus 5.5 (Agentic)" },
+    { id: "claude-opus-5.5-thinking-agentic", name: "Claude Opus 5.5 (Thinking + Agentic)" },
+    // Opus 5
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "claude-opus-4.8", name: "Claude Opus 4.8" },
     { id: "claude-opus-4.7", name: "Claude Opus 4.7" },
@@ -61,9 +68,10 @@ export default {
     { id: "qwen3-coder-next", name: "Qwen3 Coder Next", strip: ["image","audio"] },
     { id: "glm-5", name: "GLM 5" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
-    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", contextLength: 272000, rateMultiplier: 2.4, upstreamModelId: "gpt-5.6-sol", description: "Experimental preview of OpenAI GPT 5.6 Sol with 272k context window" },
-    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", contextLength: 272000, rateMultiplier: 1.2, upstreamModelId: "gpt-5.6-terra", description: "Experimental preview of OpenAI GPT 5.6 Terra with 272k context window" },
-    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", contextLength: 272000, rateMultiplier: 0.6, upstreamModelId: "gpt-5.6-luna", description: "Experimental preview of OpenAI GPT 5.6 Luna with 272k context window" },
+    // Kiro GPT-5.6 tiers run the full 1M window now (was 272k at launch).
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", contextLength: 1000000, rateMultiplier: 2.4, upstreamModelId: "gpt-5.6-sol", description: "Experimental preview of OpenAI GPT 5.6 Sol with 1M context window" },
+    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", contextLength: 1000000, rateMultiplier: 1.2, upstreamModelId: "gpt-5.6-terra", description: "Experimental preview of OpenAI GPT 5.6 Terra with 1M context window" },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", contextLength: 1000000, rateMultiplier: 0.6, upstreamModelId: "gpt-5.6-luna", description: "Experimental preview of OpenAI GPT 5.6 Luna with 1M context window" },
   ],
   oauth: {
     ssoOidcEndpoint: "https://oidc.us-east-1.amazonaws.com",

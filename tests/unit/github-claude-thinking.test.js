@@ -21,8 +21,14 @@ describe("github claude-sonnet-5.5 capabilities", () => {
     expect(caps.reasoning).toBe(true);
   });
 
-  it("effort levels match the claude-adaptive set", () => {
+  it("effort levels match the claude-adaptive set (xhigh added upstream)", () => {
     expect(getThinkingLevels("github", "claude-sonnet-5.5")).toEqual([
+      "none", "low", "medium", "high", "xhigh", "max",
+    ]);
+  });
+
+  it("claude 4.6 models keep the no-xhigh level set", () => {
+    expect(getThinkingLevels("github", "claude-sonnet-4.6")).toEqual([
       "none", "low", "medium", "high", "max",
     ]);
   });

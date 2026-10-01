@@ -7,10 +7,12 @@
 // guard decision shows up as the wrong baseUrl here, same as it would on the wire.
 //
 // Cells:
-//   - DeepSeek × {bare, (max)}: OpenAI clients use /chat/completions; Claude/Responses
-//     transports are blocked because OpenCode Go does not officially support those endpoints.
-//   - glm/kimi (chat-only) + (max): the suffix must not bypass the per-model guard.
-//   - minimax + (max) + claude: the suffix must NOT block a genuinely declared format.
+//   - deepseek × {openai, claude, openai-responses} × {bare, (max)} — the endpoint matrix
+//     under dispute in #3278/#3332. Bare and suffixed cells must resolve identically.
+//   - glm/kimi (chat-only) + (max) — regression cells: with the thinking suffix, the guard
+//     is bypassed on master (suffix isn't stripped before the registry lookup) and these get
+//     routed to /messages, which the upstream does not serve for them.
+//   - minimax + (max) + claude — suffix must NOT block a genuinely declared format.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { executeMock } = vi.hoisted(() => ({
@@ -123,28 +125,19 @@ async function route(model, sourceFormat) {
   return { result, runtimeTransport: creds.runtimeTransport ?? null };
 }
 
-describe("opencode-go DeepSeek routing contract (via real handleChatCore)", () => {
+describe("opencode-go DeepSeek endpoint matrix (via real handleChatCore)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // Upstream master routes DeepSeek on every declared format (openai + claude +
-  // openai-responses) — verify we stay on that map, not the old chat-only map.
   for (const model of ["deepseek-v4-flash", "deepseek-v4-pro"]) {
     for (const suffix of ["", "(max)"]) {
       const id = model + suffix;
-
-      it(`routes ${id} + openai-format client to /chat/completions`, async () => {
-        const { result, runtimeTransport } = await route(id, "openai");
-        expect(result.success).toBe(true);
-        expect(runtimeTransport?.baseUrl).toBe(ENDPOINTS.openai);
-      });
-
-      for (const fmt of ["claude", "openai-responses"]) {
-        it(`routes ${id} + ${fmt}-format client to ${fmt === "claude" ? "/messages" : "/responses"}`, async () => {
+      for (const [fmt, expectedUrl] of Object.entries(ENDPOINTS)) {
+        it(`routes ${id} + ${fmt}-format client to ${expectedUrl}`, async () => {
           const { result, runtimeTransport } = await route(id, fmt);
           expect(result.success).toBe(true);
-          expect(runtimeTransport?.baseUrl).toBe(ENDPOINTS[fmt]);
+          expect(runtimeTransport?.baseUrl).toBe(expectedUrl);
         });
       }
     }

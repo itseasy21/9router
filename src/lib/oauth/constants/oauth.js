@@ -127,6 +127,10 @@ export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
 // Endpoint: cli-chat-proxy.grok.com — same client_id as xai, different flow + scopes
 export const GROK_CLI_CONFIG = { ...PROVIDER_OAUTH["grok-cli"] };
 
+// Muse — subscription device code flow to auth.meta.com, no refresh
+// (Meta rejects refresh_token grants; the minted Model API key never expires).
+export const MUSE_CONFIG = { ...PROVIDER_OAUTH["muse"] };
+
 // Trae (ByteDance marscode) OAuth — authorization_code flow with local callback.
 //   1) POST GetLoginGuidance {loginTraceID} → {Result.LoginHost}
 //   2) Browser opens ${loginHost}/authorization?client_id=...&login_trace_id=...&auth_callback_url=${cb}
@@ -201,6 +205,13 @@ export const WINDSURF_CONFIG = {
   oauthTimeoutMs: 600_000,
 };
 
+// GLM Coding (Z.ai) OAuth — ZCode CLI polling flow (NOT PKCE): init mints a
+// one-off poll token, the browser opens the server-generated authorize_url,
+// poll/ready returns the tokens. The Z.AI OAuth token is then exchanged for a
+// platform business JWT and finally a long-lived coding-plan API key (no
+// refresh grant).
+export const GLM_OAUTH_CONFIG = { ...PROVIDER_OAUTH["glm"] };
+
 // Zed hosted LLM aggregator — RSA keypair native-app auth (NOT OAuth).
 // Client generates ephemeral RSA-2048 keypair; user signs in at zed.dev/native_app_signin;
 // Zed redirects to local callback with access_token RSA-encrypted against our public key.
@@ -210,36 +221,6 @@ export const ZED_HOSTED_CONFIG = {
   cloudBaseUrl: "https://cloud.zed.dev",
   llmBaseUrl: "https://cloud.zed.dev",
   defaultNativeAppPort: 58443,
-  oauthTimeoutMs: 600_000,
-};
-
-// Freebuff (freebuff.com) OAuth Configuration — fingerprint device login flow.
-//   1) POST /api/auth/cli/code {fingerprintId} → {loginUrl, fingerprintHash, expiresAt}
-//   2) Browser opens loginUrl; user signs in (code lives ~1 hour)
-//   3) GET /api/auth/cli/status?fingerprintId&fingerprintHash&expiresAt every 5s
-//      → 401 while pending; {user:{id,email,name,authToken,...}} once authorized
-// fingerprintHash is computed server-side (SHA-256 over serverSecret +
-// fingerprintId + expiresAt) and must be persisted byte-for-byte — a clock-skew
-// bug on their side made codes permanently reject when expiresAt drifts.
-// There is no refresh token: authToken is long-lived; expiry means re-login.
-export const FREEBUFF_CONFIG = {
-  ...PROVIDER_OAUTH["freebuff"],
-  loginCodeUrl:
-    process.env.FREEBUFF_LOGIN_CODE_URL ||
-    PROVIDER_OAUTH["freebuff"]?.loginCodeUrl ||
-    "https://freebuff.com/api/auth/cli/code",
-  loginStatusUrl:
-    process.env.FREEBUFF_LOGIN_STATUS_URL ||
-    PROVIDER_OAUTH["freebuff"]?.loginStatusUrl ||
-    "https://freebuff.com/api/auth/cli/status",
-  logoutUrl:
-    process.env.FREEBUFF_LOGOUT_URL ||
-    PROVIDER_OAUTH["freebuff"]?.logoutUrl ||
-    "https://freebuff.com/api/auth/cli/logout",
-  websiteUrl:
-    process.env.FREEBUFF_WEBSITE_URL ||
-    PROVIDER_OAUTH["freebuff"]?.websiteUrl ||
-    "https://freebuff.com",
   oauthTimeoutMs: 600_000,
 };
 
@@ -271,6 +252,6 @@ export const PROVIDERS = {
   GROK_CLI: "grok-cli",
   TRAE: "trae",
   WINDSURF: "windsurf",
+  GLM: "glm",
   ZED: "zed",
-  FREEBUFF: "freebuff",
 };
