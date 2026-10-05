@@ -15,20 +15,6 @@ import {
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
 const MAX_TOOL_NAME_LEN = 128;
-const RESPONSES_TOOL_NAME_PATTERN = /[^a-zA-Z0-9_-]/g;
-
-/**
- * OpenAI Responses API only accepts tool names matching ^[a-zA-Z0-9_-]+$
- * (400 "Invalid 'input[N].name': string does not match pattern" otherwise).
- * Claude clients routinely send MCP-style names containing dots
- * (`mcp__slack.post_message`), so map every invalid char to `_` and keep the
- * original on a reverse map so streamed tool calls restore the client's name.
- */
-function sanitizeResponsesToolName(name) {
-  const cleaned = String(name || "").trim().replace(RESPONSES_TOOL_NAME_PATTERN, "_");
-  if (!cleaned) return "";
-  return cleaned.slice(0, MAX_TOOL_NAME_LEN);
-}
 
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
@@ -351,8 +337,6 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     stream: true,
     store: false
   };
-  // sanitized → original; exposed as _toolNameMap for the response translators
-  const responsesToolNameMap = new Map();
 
   // Extract system message as instructions
   let hasSystemMessage = false;
@@ -417,14 +401,10 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
         // Skip nameless calls — strict Responses upstreams reject them (#444)
         const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : "";
         if (!name) continue;
-        // History names must satisfy the same ^[a-zA-Z0-9_-]+$ pattern and
-        // match the sanitized tools[] declarations (input[291].name 400).
-        const safeName = sanitizeResponsesToolName(name);
-        if (!safeName) continue;
         result.input.push({
           type: RESPONSES_ITEM.FUNCTION_CALL,
           call_id: clampResponsesCallId(tc.id),
-          name: safeName,
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
           arguments: coerceResponsesArguments(tc.function?.arguments)
         });
       }
@@ -447,27 +427,14 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
-    const usedNames = new Set();
     result.tools = body.tools.map(tool => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
         // Strict upstreams reject nameless/overlong tool declarations
         const name = typeof tool.function?.name === "string" ? tool.function.name.trim() : "";
         if (!name) return null;
-        // Sanitize to the Responses name pattern; remember the original so
-        // streamed tool calls can be renamed back for the client.
-        const safeName = sanitizeResponsesToolName(name);
-        if (!safeName) return null;
-        let unique = safeName;
-        let suffix = 2;
-        while (usedNames.has(unique)) {
-          const tail = `_${suffix++}`;
-          unique = `${safeName.slice(0, MAX_TOOL_NAME_LEN - tail.length)}${tail}`;
-        }
-        usedNames.add(unique);
-        if (unique !== name.slice(0, MAX_TOOL_NAME_LEN)) responsesToolNameMap.set(unique, name.slice(0, MAX_TOOL_NAME_LEN));
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          name: unique,
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
           strict: tool.function.strict
@@ -475,19 +442,6 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       }
       return tool;
     }).filter(Boolean);
-  }
-
-  if (body.tool_choice) {
-    // Arrives either flat (Responses shape) or nested (OpenAI chat shape from
-    // the claude→openai hop); the Responses API wants { type: "function", name }.
-    const choiceName =
-      typeof body.tool_choice?.name === "string"
-        ? body.tool_choice.name
-        : typeof body.tool_choice?.function?.name === "string"
-          ? body.tool_choice.function.name
-          : "";
-    const safeChoice = sanitizeResponsesToolName(choiceName);
-    if (safeChoice) result.tool_choice = { type: "function", name: safeChoice };
   }
 
   // Pass through other relevant fields
@@ -504,12 +458,6 @@ if (body.max_output_tokens !== undefined) {
   if (body.reasoning_effort !== undefined) result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
   if (body.prompt_cache_key !== undefined) result.prompt_cache_key = body.prompt_cache_key;
-
-  // Reverse map so streamed tool calls come back under the client's original
-  // names (same contract as the kiro translators' _toolNameMap).
-  if (responsesToolNameMap.size > 0) {
-    result._toolNameMap = responsesToolNameMap;
-  }
 
   return result;
 }
