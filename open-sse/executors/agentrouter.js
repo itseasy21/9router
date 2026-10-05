@@ -65,6 +65,12 @@ export class AgentRouterExecutor extends DefaultExecutor {
       out.reasoning = { effort: (normalized === "none" || normalized === "off") ? "minimal" : normalized, summary: "auto" };
     }
     if (out.reasoning && typeof out.reasoning === "object" && !Array.isArray(out.reasoning)) {
+      // The shared translator (PR #4610) may deliver the effort inside reasoning{};
+      // the none/off clamp must cover that shape too.
+      if (typeof out.reasoning.effort === "string") {
+        const effort = out.reasoning.effort.toLowerCase().trim();
+        if (effort === "none" || effort === "off") out.reasoning.effort = "minimal";
+      }
       if (!out.reasoning.summary) out.reasoning.summary = "auto";
     }
     delete out.reasoning_effort;
