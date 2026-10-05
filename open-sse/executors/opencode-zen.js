@@ -3,6 +3,12 @@ import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import {
+  concealFingerprintToolNames,
+  appendMissingFingerprintTools,
+  retargetToolChoice,
+  recordRenamedToolNames,
+} from "../utils/opencodeFingerprint.js";
+import {
   normalizeResponsesInput,
   clampResponsesCallId,
   coerceResponsesArguments,
@@ -111,25 +117,18 @@ function ensureChatFingerprintTools(body) {
 
 function ensureResponsesFingerprintTools(body) {
   if (!body || typeof body !== "object") return;
-  const present = new Set();
-  if (Array.isArray(body.tools)) {
-    for (const tool of body.tools) {
-      const name = toolNameOf(tool);
-      if (name) present.add(name);
-    }
-  } else {
-    body.tools = [];
-  }
-  for (const name of OPENCODE_FINGERPRINT_TOOLS) {
-    if (present.has(name)) continue;
-    body.tools.push({
-      type: "function",
-      name,
-      description: `OpenCode built-in ${name} tool`,
-      parameters: { type: "object", properties: {} },
-    });
-    present.add(name);
-  }
+  // Shared helper: canonicalize fingerprint quartet case-variants (client's
+  // "Bash" → "bash") with a rename map so streamed tool calls restore the
+  // client's spelling, dedup duplicates, and append only genuinely missing
+  // members as decoys. A previous local copy added lowercase decoys NEXT TO
+  // the client's "Bash" (case-sensitive present-check), so the model saw two
+  // bash tools — one with an empty schema — and calling the decoy freeballed
+  // arguments that failed client validation ("required parameter 'command'
+  // is missing").
+  const { tools, map } = concealFingerprintToolNames(body.tools);
+  body.tools = appendMissingFingerprintTools(tools, true);
+  retargetToolChoice(body, map);
+  recordRenamedToolNames(body, map);
 }
 
 function normalizeSession(value) {
