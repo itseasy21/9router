@@ -25,6 +25,8 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+import { isAgentRouterTimeBoundModel, isAgentRouterBudgetPaused, getAgentRouterPauseUntil } from "open-sse/services/agentrouterWindows.js";
+import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 
 /**
  * Handle chat completion request
@@ -220,6 +222,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  // AgentRouter time-bound models (claude-opus-5 / gpt-6-astra): while paused for
+  // budget-pool exhaustion, skip dispatch so combos fall through to the next model
+  // and solo requests get a 503 with retry-after until the next window.
+  if (isAgentRouterTimeBoundModel(provider, model) && isAgentRouterBudgetPaused(provider, model)) {
+    const untilMs = getAgentRouterPauseUntil(model) || Date.now();
+    const retryAfter = new Date(untilMs).toISOString();
+    const retryHuman = formatRetryAfter(retryAfter);
+    log.warn("CHAT", `[${provider}/${model}] paused until next budget window (${retryHuman})`);
+    return unavailableResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, `[${provider}/${model}] budget window exhausted — retry after next allocation window`, retryAfter, retryHuman);
+  }
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

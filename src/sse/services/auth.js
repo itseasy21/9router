@@ -1,6 +1,7 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { noteAgentRouterBudgetError } from "open-sse/services/agentrouterWindows.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
@@ -244,6 +245,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const connections = await getProviderConnections({ provider });
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
+
+  // AgentRouter time-bound models: on budget-pool exhaustion, pause the model
+  // until the next allocation window (02:00 / 11:00 UTC) so dispatch can skip it.
+  if (noteAgentRouterBudgetError(resolveProviderId(provider), model, status, errorText)) {
+    log.warn("AUTH", `agentrouter/${model} budget pool exhausted — paused until next window (02:00/11:00 UTC)`);
+  }
 
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
