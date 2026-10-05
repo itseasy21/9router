@@ -33,6 +33,20 @@ export class AgentRouterExecutor extends DefaultExecutor {
     const out = super.transformRequest(model, body, stream, credentials);
     if (!isResponsesModel(model || body?.model)) return out;
 
+    // AgentRouter's /v1/responses relay rejects sampling knobs for gpt-6-astra
+    // ("Unsupported parameter: 'top_p' is not supported with this model", 400).
+    // Mirror the Codex Responses handling: strip the sampling family — the model
+    // is reasoning-first and ignores them anyway.
+    delete out.temperature;
+    delete out.top_p;
+    delete out.top_k;
+    delete out.frequency_penalty;
+    delete out.presence_penalty;
+    delete out.logprobs;
+    delete out.top_logprobs;
+    delete out.n;
+    delete out.seed;
+
     // Responses names the output cap max_output_tokens, not max_tokens.
     // Floor 16: Responses API 400s below that (Claude Code pings send max_tokens:1).
     if (out.max_output_tokens === undefined) {

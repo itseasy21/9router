@@ -99,6 +99,48 @@ describe("AgentRouterExecutor routing + request shaping", () => {
     expect(out.reasoning).toEqual({ effort: "minimal", summary: "auto" });
   });
 
+  it("strips top_p and the sampling family from the astra responses payload", () => {
+    // Upstream 400: "Unsupported parameter: 'top_p' is not supported with this model."
+    const ex = new AgentRouterExecutor();
+    const body = {
+      model: MODEL,
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 40,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.2,
+      logprobs: true,
+      top_logprobs: 5,
+      n: 2,
+      seed: 42,
+      max_tokens: 512,
+    };
+    const out = ex.transformRequest(MODEL, body, true, {});
+    for (const key of ["temperature", "top_p", "top_k", "frequency_penalty", "presence_penalty", "logprobs", "top_logprobs", "n", "seed"]) {
+      expect(out[key]).toBeUndefined();
+    }
+    // Output cap still normalized alongside the strip
+    expect(out.max_output_tokens).toBe(512);
+  });
+
+  it("strips sampling knobs that a native responses body passes through the translator", () => {
+    // The openai-responses translator passes top_p/temperature through untouched
+    // (pinned in openai-responses.js); the executor must strip them regardless
+    // of whether the payload arrived translated or natively.
+    const ex = new AgentRouterExecutor();
+    const out = ex.transformRequest(
+      MODEL,
+      { model: MODEL, input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }], top_p: 0.9, temperature: 0.5 },
+      true,
+      {},
+    );
+    expect(out.top_p).toBeUndefined();
+    expect(out.temperature).toBeUndefined();
+    // input payload survives the strip
+    expect(out.input).toHaveLength(1);
+  });
+
   it("keeps an existing reasoning object and never overrides it with reasoning_effort", () => {
     const ex = new AgentRouterExecutor();
     const out = ex.transformRequest(
@@ -117,6 +159,14 @@ describe("AgentRouterExecutor routing + request shaping", () => {
     expect(out.max_tokens).toBe(100);
     expect(out.reasoning).toBeUndefined();
     expect(out.stream).toBeUndefined(); // base transform never touches stream for non-astra models
+  });
+
+  it("keeps sampling knobs on non-astra models (strip is astra-only)", () => {
+    const ex = new AgentRouterExecutor();
+    const body = { model: "gpt-5.6-sol", messages: [], top_p: 0.9, temperature: 0.5 };
+    const out = ex.transformRequest("gpt-5.6-sol", body, true, {});
+    expect(out.top_p).toBe(0.9);
+    expect(out.temperature).toBe(0.5);
   });
 });
 
