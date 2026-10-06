@@ -13,6 +13,7 @@ import { DEFAULT_RETRY_CONFIG, HTTP_STATUS, resolveRetryEntry } from "../config/
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { stripCodexUnsupportedPatterns } from "../utils/codexToolSchema.js";
+import { recordRenamedToolNames } from "../utils/opencodeFingerprint.js";
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
@@ -129,6 +130,84 @@ function normalizeCodexTools(body) {
       if (!n || !validNames.has(n)) delete body.tool_choice;
     }
   }
+}
+
+const CODEX_TOOL_NAME_PATTERN = /[^a-zA-Z0-9_-]/g;
+const CODEX_TOOL_NAME_MAX = 128;
+
+/**
+ * Codex /responses only accepts tool names matching ^[a-zA-Z0-9_-]+$
+ * (400 "Invalid 'input[N].name': string does not match pattern" otherwise).
+ * Claude clients routinely send MCP-style names containing dots
+ * (`mcp__slack.post_message`) — in tools[], in historical function_call
+ * items, and in tool_choice. Rename every invalid char to `_` (collision-
+ * suffixing duplicates) and keep a sanitized→original map on the request via
+ * recordRenamedToolNames() so streamed tool calls restore the client's name.
+ * Codex-scope only: the shared openai→openai-responses translator stays
+ * untouched because opencode muse-spark and other responses targets have
+ * their own name contracts (e.g. the lowercase fingerprint quartet).
+ */
+function sanitizeCodexToolNames(body) {
+  if (!body || typeof body !== "object") return;
+  const renameMap = new Map();
+  const makeSafe = (name) => String(name || "").trim().replace(CODEX_TOOL_NAME_PATTERN, "_").slice(0, CODEX_TOOL_NAME_MAX);
+  const uniqueName = (safe, used) => {
+    let candidate = safe;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      const tail = `_${suffix++}`;
+      candidate = `${safe.slice(0, CODEX_TOOL_NAME_MAX - tail.length)}${tail}`;
+    }
+    used.add(candidate);
+    return candidate;
+  };
+
+  // 1. Tool declarations (flat Responses shape after normalizeCodexTools)
+  if (Array.isArray(body.tools)) {
+    const used = new Set();
+    for (const tool of body.tools) {
+      if (!tool || typeof tool !== "object") continue;
+      const name = typeof tool.name === "string" ? tool.name : "";
+      if (!name) continue; // hosted tools (web_search etc.) carry no name
+      const safe = makeSafe(name);
+      if (!safe) continue;
+      const unique = uniqueName(safe, used);
+      if (unique !== name) {
+        tool.name = unique;
+        renameMap.set(unique, name);
+      }
+    }
+  }
+
+  // 2. Historical function_call items must match the sanitized declarations
+  if (Array.isArray(body.input)) {
+    for (const item of body.input) {
+      if (item?.type !== "function_call" || typeof item.name !== "string") continue;
+      const safe = makeSafe(item.name);
+      if (!safe) continue;
+      if (safe !== item.name) item.name = safe;
+    }
+  }
+
+  // 3. tool_choice: sanitize and only keep it when it still references a real tool
+  if (body.tool_choice && typeof body.tool_choice === "object" && !Array.isArray(body.tool_choice)
+    && body.tool_choice.type === "function") {
+    const choiceName = typeof body.tool_choice.name === "string"
+      ? body.tool_choice.name
+      : typeof body.tool_choice.function?.name === "string"
+        ? body.tool_choice.function.name
+        : "";
+    if (choiceName) {
+      const safe = makeSafe(choiceName);
+      if (safe && body.tools?.some?.((t) => t?.name === safe)) {
+        body.tool_choice = { type: "function", name: safe };
+      } else {
+        delete body.tool_choice;
+      }
+    }
+  }
+
+  if (renameMap.size > 0) recordRenamedToolNames(body, renameMap);
 }
 
 // Resolve prompt-cache session id: client session → assistant-text-hash → workspaceId → connection
@@ -459,6 +538,11 @@ export class CodexExecutor extends BaseExecutor {
     stripStoredItemReferences(body, responsesLite);
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
+    // Codex rejects tool names outside ^[a-zA-Z0-9_-]+$ (dotted MCP names from
+    // Claude clients). Codex-scope: run after normalizeCodexTools so names are
+    // already flat, and before the lite-prefix packing below so prefix items
+    // carry the sanitized declarations too.
+    sanitizeCodexToolNames(body);
 
     // Ensure streaming is enabled (Codex API requires it)
     body.stream = true;
