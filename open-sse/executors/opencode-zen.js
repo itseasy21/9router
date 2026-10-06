@@ -4,6 +4,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import {
   concealFingerprintToolNames,
+  concealFingerprintHistoryNames,
   appendMissingFingerprintTools,
   retargetToolChoice,
   recordRenamedToolNames,
@@ -127,6 +128,10 @@ function ensureResponsesFingerprintTools(body) {
   // is missing").
   const { tools, map } = concealFingerprintToolNames(body.tools);
   body.tools = appendMissingFingerprintTools(tools, true);
+  // History must match the cloaked declaration names or the model imitates the
+  // history spelling (e.g. client "Bash" in prior turns) and calls an undeclared
+  // tool with empty args (live-probed failure mode on multi-turn sessions).
+  concealFingerprintHistoryNames(body);
   retargetToolChoice(body, map);
   recordRenamedToolNames(body, map);
 }

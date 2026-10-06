@@ -122,9 +122,50 @@ export function retargetToolChoice(body, map) {
 }
 
 /**
- * Full request-side pass: canonicalise quartet case variants, remove duplicate
- * quartet declarations, append missing members and preserve the legacy
- * tool_choice defaults used by the OpenCode executor.
+ * Canonicalise quartet case-variants in conversation HISTORY so they match the
+ * cloaked declarations. Responses `input[]` carries prior tool calls as flat
+ * function_call items ({name, call_id, arguments}); chat history uses
+ * assistant tool_calls. Without this, a multi-turn session sends history items
+ * named `Bash` next to a declared `bash` — the model then imitates the history
+ * spelling, calls the undeclared name, and emits empty arguments (live-probed:
+ * argsFinal="" → client-side "required parameter 'command' is missing").
+ *
+ * History renames need no reverse mapping: history items are context only and
+ * are never streamed back to the client.
+ *
+ * @param {object} body
+ */
+export function concealFingerprintHistoryNames(body) {
+  if (!body || typeof body !== "object") return;
+
+  if (Array.isArray(body.input)) {
+    for (const item of body.input) {
+      if (item?.type === "function_call" && typeof item.name === "string") {
+        const key = fingerprintToolKey(item.name);
+        if (key && key !== item.name) item.name = key;
+      }
+    }
+  }
+
+  if (Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      if (msg?.role !== "assistant" || !Array.isArray(msg.tool_calls)) continue;
+      for (const call of msg.tool_calls) {
+        const name = call?.function?.name ?? call?.name;
+        if (typeof name !== "string") continue;
+        const key = fingerprintToolKey(name);
+        if (!key || key === name) continue;
+        if (call.function && typeof call.function === "object") call.function.name = key;
+        else call.name = key;
+      }
+    }
+  }
+}
+
+/**
+ * Full request-side pass: canonicalise quartet case variants (declarations AND
+ * history), remove duplicate quartet declarations, append missing members and
+ * preserve the legacy tool_choice defaults used by the OpenCode executor.
  *
  * @param {object} body
  * @param {boolean} flat - true for Responses tools ({name}), false for chat tools
@@ -136,6 +177,7 @@ export function applyFingerprintTools(body, flat) {
   const hadClientTools = Array.isArray(body.tools) && body.tools.length > 0;
   const { tools, map } = concealFingerprintToolNames(body.tools);
   body.tools = appendMissingFingerprintTools(tools, flat);
+  concealFingerprintHistoryNames(body);
   retargetToolChoice(body, map);
 
   // Preserve the existing executor semantics. Responses uses auto when the
