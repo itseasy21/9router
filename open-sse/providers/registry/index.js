@@ -132,9 +132,13 @@ import p129 from "./agnes.js";
 import p130 from "./bai.js";
 import p131 from "./agentrouter.js";
 import p132 from "./modal.js";
-import p134 from "./tinyfish.js";
-import p135 from "./v1m.js";
-import p136 from "./muse.js";
+import p133 from "./tinyfish.js";
+import p134 from "./v1m.js";
+import p135 from "./muse.js";
+import p136 from "./minimax-code.js";
+import p137 from "./minimax-code-global.js";
+import p138 from "./bedrock.js";
+import p139 from "./bedrock-xai.js";
 export default [
   p0,
   p1,
@@ -267,7 +271,11 @@ export default [
   p130,
   p131,
   p132,
+  p133,
   p134,
   p135,
   p136,
+  p137,
+  p138,
+  p139,
 ];

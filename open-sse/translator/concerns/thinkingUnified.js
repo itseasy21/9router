@@ -154,6 +154,11 @@ function resolveFormat(targetFormat, model, provider) {
   const caps = getCapabilitiesForModel(provider, model);
   const isOpenAIWire = targetFormat === "openai" || targetFormat === "openai-responses";
   if (caps.thinkingFormat && !(isOpenAIWire && NATIVE_ONLY_FORMATS.has(caps.thinkingFormat))) {
+    // Muse (Meta) strict Responses API rejects top-level reasoning_effort and
+    // requires nested reasoning: { effort, summary }. Other upstreams keep Chat-shaped effort.
+    if (provider === "muse" && targetFormat === "openai-responses") {
+      return "openai-responses";
+    }
     return caps.thinkingFormat;
   }
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
@@ -300,24 +305,41 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
       break;
     }
+    case "openai-responses": {
+      // The Responses API nests effort: reasoning:{effort,summary}. A top-level
+      // reasoning_effort is rejected by strict upstreams (Meta: "unknown
+      // parameter `reasoning_effort`"). "none" is expressed by omitting reasoning.
+      if (none && canDisable) { delete body.reasoning; break; }
+      const level = toLevel(eff);
+      if (level) {
+        const current = body.reasoning && typeof body.reasoning === "object" && !Array.isArray(body.reasoning)
+          ? body.reasoning
+          : {};
+        body.reasoning = { ...current, effort: normalizeOpenAILevel(level, supportedLevels) };
+        if (!body.reasoning.summary) body.reasoning.summary = "auto";
+      }
+      delete body.reasoning_effort;
+      break;
+    }
     case "claude-adaptive": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
       // Models that can disable thinking need the explicit adaptive switch.
       // Permanently adaptive models such as Fable 5.1 accept effort directly.
       if (canDisable) body.thinking = { type: "adaptive", ...(display ? { display } : {}) };
-      else delete body.thinking;
-      // Clamp to the model's supported levels: official Claude's output_config.effort
-      // enum has max but not xhigh (xhigh→high), while relays like AgentRouter forward
-      // native effort limits — GLM-5.3 accepts max, GPT-5.6 Sol stops at xhigh (max→xhigh).
-      // "auto" resolves to high — output_config.effort rejects "auto" (#3792).
-      let adaptiveLevel = toLevel(eff);
-      if (adaptiveLevel === "auto") adaptiveLevel = "high";
-      if (adaptiveLevel === "ultra") adaptiveLevel = supportedLevels?.includes("max") ? "max" : "xhigh";
-      if (adaptiveLevel === "xhigh" && supportedLevels?.length && !supportedLevels.includes("xhigh")) adaptiveLevel = "high";
-      if (adaptiveLevel === "max" && supportedLevels?.length && !supportedLevels.includes("max")) {
-        adaptiveLevel = supportedLevels.includes("xhigh") ? "xhigh" : "high";
-      }
-      body.output_config = { effort: adaptiveLevel };
+      else delete body.thinking;        // Clamp to the model's supported levels: official Claude's output_config.effort
+        // enum has max but not xhigh (xhigh→high), while relays like AgentRouter forward
+        // native effort limits — GLM-5.3 accepts max, GPT-5.6 Sol stops at xhigh (max→xhigh).
+        // "auto" resolves to high — output_config.effort rejects "auto" (#3792).
+        // Claude effort has no "minimal" (always-on models clamp "none" to it).
+        let adaptiveLevel = toLevel(eff);
+        if (adaptiveLevel === "auto") adaptiveLevel = "high";
+        if (adaptiveLevel === "minimal") adaptiveLevel = "low";
+        if (adaptiveLevel === "ultra") adaptiveLevel = supportedLevels?.includes("max") ? "max" : "xhigh";
+        if (adaptiveLevel === "xhigh" && supportedLevels?.length && !supportedLevels.includes("xhigh")) adaptiveLevel = "high";
+        if (adaptiveLevel === "max" && supportedLevels?.length && !supportedLevels.includes("max")) {
+          adaptiveLevel = supportedLevels.includes("xhigh") ? "xhigh" : "high";
+        }
+        body.output_config = { effort: adaptiveLevel };
       break;
     }
     case "claude-budget": {

@@ -30,7 +30,9 @@ describe("getCapabilitiesForModel", () => {
   };
 
   const kiroGpt56Expected = {
-    contextWindow: 272000,
+    // Fork change (v0.5.95 merge, 9898bd8f): Kiro no longer truncates to 272k —
+    // its GPT-5.6 tiers run the full 1M window, pinned via PROVIDER_CAPABILITIES.
+    contextWindow: 1000000,
     maxOutput: 128000,
     thinkingFormat: "openai",
     reasoning: true,
@@ -73,7 +75,7 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
   });
 
-  it("reports Kiro GPT 5.6 models with the Kiro 272k context window", () => {
+  it("reports Kiro GPT 5.6 models with the 1M context window (fork no longer truncates)", () => {
     expect(getCapabilitiesForModel("kiro", "gpt-5.6-sol")).toMatchObject(kiroGpt56Expected);
     expect(getCapabilitiesForModel("kiro", "openai/gpt-5.6-sol")).toMatchObject(kiroGpt56Expected);
     expect(getCapabilitiesForModel("kiro", "gpt-5.6-terra-thinking")).toMatchObject(kiroGpt56Expected);

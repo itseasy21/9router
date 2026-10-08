@@ -747,6 +747,31 @@ case "zed":
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
               unit: quota.unit || "token",
+              unlimited: quota.unlimited,
+            });
+          });
+        }
+        break;
+
+      case "minimax-code":
+      case "minimax-code-global":
+        // Service already returns dashboard-shaped rows: a credits balance
+        // (isCreditBalance → 💰 with the amount as total) plus M Plan rate
+        // windows as 0-100 percent rows. Pass through, preserving extras.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name,
+              modelKey: name.toLowerCase().replace(/\s+/g, "-"),
+              used: quota.used || 0,
+              total: quota.total || 0,
+              remaining: quota.remaining,
+              remainingPercentage: quota.remainingPercentage,
+              resetAt: quota.resetAt || null,
+              message: quota.message,
+              isCreditBalance: quota.isCreditBalance,
+              currency: quota.currency,
+              unlimited: quota.unlimited,
             });
           });
         }

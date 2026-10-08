@@ -24,6 +24,7 @@ const SPECIALIZED = new Set([
 ]);
 
 // Sanitize header: khử token + field thời gian động (kimi X-Msh-Device-Id) để snapshot ổn định.
+// X-Mavis-Session-Id (MiniMax Code) là random UUID mint per request — khử như kimi.
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
@@ -33,6 +34,7 @@ function sanitize(headers) {
           .replace(/kimi-\d{10,}/g, "kimi-<TS>")
       : v;
   }
+  if (out["X-Mavis-Session-Id"]) out["X-Mavis-Session-Id"] = "<UUID>";
   return out;
 }
 

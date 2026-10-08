@@ -155,21 +155,21 @@ describe("opencode-go Muse Spark 1.3 routing contract (via real handleChatCore)"
     expect(runtimeTransport?.baseUrl).toBe(ENDPOINTS["openai-responses"]);
   });
 
-  // Upstream source-match guard: a responses-only model keeps a null
-  // sourceFormat-matched transport for claude/openai clients, and the target
-  // format still drives translation (targetFormat assertion lives in
-  // opencode-go-muse-spark-responses.test.js). runtimeTransport stays null so
-  // the dedicated executor pins /responses at buildUrl time.
-  it("keeps runtimeTransport null for 1.3 + claude-format client (source-match guard)", async () => {
+  // Upstream fix(b00ba1aa): a Responses-only model requested by a claude/openai
+  // client is translated to the Responses body, so the URL must match too —
+  // runtimeTransport falls back to the model's declared targetFormat transport
+  // (previously null, which POSTed the translated `input` body to /chat/completions
+  // and upstream rejected it: "unknown parameter `input`").
+  it("routes 1.3 + claude-format client to the declared /responses transport (fallback)", async () => {
     const { result, runtimeTransport } = await route("muse-spark-1.3-contributor", "claude");
     expect(result.success).toBe(true);
-    expect(runtimeTransport).toBeNull();
+    expect(runtimeTransport?.baseUrl).toBe(ENDPOINTS["openai-responses"]);
   });
 
-  it("keeps runtimeTransport null for 1.3 + Chat-format (openai) client (source-match guard)", async () => {
+  it("routes 1.3 + Chat-format (openai) client to the declared /responses transport (fallback)", async () => {
     const { result, runtimeTransport } = await route("muse-spark-1.3-contributor", "openai");
     expect(result.success).toBe(true);
-    expect(runtimeTransport).toBeNull();
+    expect(runtimeTransport?.baseUrl).toBe(ENDPOINTS["openai-responses"]);
   });
 });
 
