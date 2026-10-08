@@ -56,6 +56,18 @@ const DEFAULT_SETTINGS = {
   headroomTimeoutMs: 3000,
   cavemanEnabled: false,
   cavemanLevel: "full",
+  // OmniRoute-style stacked compression pipeline — every engine individually
+  // toggleable, ALL default off so existing behavior is unchanged.
+  compressionPipelineEnabled: false,
+  compressionEngines: {
+    sessionDedupEnabled: false,
+    ccrEnabled: false,
+    liteEnabled: false,
+    responsesToolOutputEnabled: false,
+    relevanceEnabled: false,
+    aggressiveEnabled: false,
+    ultraEnabled: false,
+  },
   ponytailEnabled: false,
   ponytailLevel: "full",
   pxpipeEnabled: false,

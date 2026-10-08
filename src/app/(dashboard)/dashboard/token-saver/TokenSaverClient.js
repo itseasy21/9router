@@ -58,6 +58,16 @@ export default function TokenSaverClient() {
   const [showPxpipeModal, setShowPxpipeModal] = useState(false);
   const [pxpipeActionLoading, setPxpipeActionLoading] = useState(false);
   const [pxpipeActionError, setPxpipeActionError] = useState("");
+  const [compressionPipelineEnabled, setCompressionPipelineEnabled] = useState(false);
+  const [compressionEngines, setCompressionEngines] = useState({
+    sessionDedupEnabled: false,
+    ccrEnabled: false,
+    liteEnabled: false,
+    responsesToolOutputEnabled: false,
+    relevanceEnabled: false,
+    aggressiveEnabled: false,
+    ultraEnabled: false,
+  });
   const [locale, setLocale] = useState("en");
 
   const { copied, copy } = useCopyToClipboard();
@@ -108,6 +118,27 @@ export default function TokenSaverClient() {
   const handleCavemanEnabled = (value) => {
     setCavemanEnabled(value);
     patchSetting({ cavemanEnabled: value });
+  };
+
+  // OmniRoute-style stacked compression pipeline: master switch + per-engine toggles
+  const COMPRESSION_ENGINE_META = [
+    { key: "sessionDedupEnabled", name: "Session-Dedup", desc: "Drops content repeated across turns (content-addressed, cross-turn)" },
+    { key: "ccrEnabled", name: "CCR", desc: "Archives large blocks behind retrieve markers, head/tail retained" },
+    { key: "liteEnabled", name: "Lite", desc: "Whitespace + blank-line trimming (latency-light baseline)" },
+    { key: "responsesToolOutputEnabled", name: "Responses Tool Output", desc: "Lossless JSON minify + bounded diagnostic compression (Responses API)" },
+    { key: "relevanceEnabled", name: "Relevance", desc: "Extractive sentence scoring against the last user query" },
+    { key: "aggressiveEnabled", name: "Aggressive", desc: "Progressive aging of old turns" },
+    { key: "ultraEnabled", name: "Ultra", desc: "Heuristic filler/boilerplate pruning with optional SLM tier (deterministic here)" },
+  ];
+
+  const handleCompressionPipeline = (value) => {
+    setCompressionPipelineEnabled(value);
+    patchSetting({ compressionPipelineEnabled: value });
+  };
+
+  const handleCompressionEngine = (key, value) => {
+    setCompressionEngines((prev) => ({ ...prev, [key]: value }));
+    patchSetting({ compressionEngines: { ...compressionEngines, [key]: value } });
   };
 
   const handleHeadroomEnabled = (value) => {
@@ -432,6 +463,10 @@ export default function TokenSaverClient() {
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
           if (typeof data.pxpipeMinChars === "number") setPxpipeMinChars(data.pxpipeMinChars);
+          setCompressionPipelineEnabled(!!data.compressionPipelineEnabled);
+          if (data.compressionEngines && typeof data.compressionEngines === "object") {
+            setCompressionEngines((prev) => ({ ...prev, ...data.compressionEngines }));
+          }
           refreshHeadroomStatus();
           // PRD: run the PXPIPE health check automatically when the page opens
           refreshPxpipeStatus().then(runPxpipeHealth);
@@ -1017,6 +1052,45 @@ export default function TokenSaverClient() {
           </div>
         </div>
       </Modal>
+
+      {/* OmniRoute-style stacked compression pipeline */}
+      <Card className="p-6 mt-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Stacked compression pipeline (OmniRoute 12-engine stack)</p>
+            <p className="text-sm text-text-muted">
+              Runs composable engines in stack order: Session-Dedup → CCR → Lite →
+              Responses Tool Output → Relevance → Aggressive → Ultra. RTK,
+              Headroom and Caveman keep their own switches above. Code blocks,
+              URLs and structured data are always preserved; every engine is
+              fail-open.
+            </p>
+          </div>
+          <Toggle
+            checked={compressionPipelineEnabled}
+            onChange={() => handleCompressionPipeline(!compressionPipelineEnabled)}
+          />
+        </div>
+        {compressionPipelineEnabled && (
+          <div className="mt-4 pt-4 border-t border-border flex flex-col gap-3">
+            {COMPRESSION_ENGINE_META.map((eng) => (
+              <div
+                key={eng.key}
+                className="flex items-center justify-between gap-4 flex-wrap"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{eng.name}</p>
+                  <p className="text-xs text-text-muted">{eng.desc}</p>
+                </div>
+                <Toggle
+                  checked={!!compressionEngines[eng.key]}
+                  onChange={() => handleCompressionEngine(eng.key, !compressionEngines[eng.key])}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <ConfirmModal
         isOpen={!!extrasConfirm}
