@@ -289,8 +289,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Token-saver flags accumulator for the single "⚙" log line below.
   const xf = [];
 
-  // OmniRoute-style stacked compression pipeline (session-dedup → ccr → lite →
-  // responses-tool-output → relevance → aggressive → ultra). Each engine is
+  // Stacked compression pipeline (session-dedup → lite → responses-tool-output).
+  // Each engine is
   // individually toggleable and fail-open; all engines default OFF. Runs after
   // RTK so structural engines see RTK-filtered tool results.
   if (tokenSaverEnabled && compressionPipelineEnabled) {

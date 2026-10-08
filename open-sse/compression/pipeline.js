@@ -1,37 +1,38 @@
-// OmniRoute-style stacked compression pipeline for 9Router.
+// Stacked compression pipeline for 9Router (OmniRoute-inspired subset).
 //
-// Runs the 12-engine stack subset in OmniRoute's documented pipeline order,
-// mixing the new engines (this dir) with 9Router's existing RTK / Headroom /
-// Caveman savers. Every engine is independently toggleable and fail-open —
-// a thrown error anywhere leaves the body untouched and just skips that engine.
+// Runs the kept engines in stack order, mixing this dir's engines with
+// 9Router's existing RTK / Headroom / Caveman savers. Every engine is
+// independently toggleable and fail-open — a thrown error anywhere leaves
+// the body untouched and just skips that engine.
 //
-// Order follows OmniRoute's stack numbering:
-//   1 session-dedup → 2 ccr → 3 lite → 4 rtk* → 5 responses-tool-output
-//   → 6 headroom* → 7 relevance → 8 caveman* → 9 aggressive → 11 ultra
-//   (* = existing 9Router savers, invoked by chatCore as today;
-//    #10 LLMLingua-2 and #12 OmniGlyph are intentionally not implemented —
-//    they need ONNX / image-wire support and are left as future work.)
+// Kept engines (in stack order):
+//   1 session-dedup → 3 lite → 5 responses-tool-output
+//   (4 rtk*, 6 headroom*, 8 caveman* are invoked by chatCore as today.)
 //
-// This module only handles engines 1,2,3,5,7,9,11. chatCore keeps invoking
-// RTK/headroom/caveman/ponytail/pxpipe itself so existing logging + stats
-// accumulation stays byte-for-byte identical for existing users.
+// Removed engines (formerly OmniRoute stacks #2 ccr, #7 relevance, #9
+// aggressive, #11 ultra) — all deleted on quality grounds:
+//   - ccr: elideMiddle() permanently discarded the middle of large prose
+//     blocks (the "archive" in the marker was hash-only; no store, no
+//     retrieval) — unattributed information loss on exactly the prose where
+//     answers live.
+//   - relevance: extractive sentence dropping against the last user query —
+//     dropped unrecoverable facts that later turns depend on; RTK already
+//     compresses the real bulk (tool results).
+//   - aggressive: truncated assistant turns older than ~40 messages — the
+//     long sessions where context matters most.
+//   - ultra: filler-phrase rewriting with no recency guard — could mutate the
+//     live user message (e.g. quoted phrases inside instructions).
+// If a destructive engine is ever reintroduced it needs a real archive +
+// retrieval path (ccr) or recency guards + an outcome eval (the others).
 
 import { compressSessionDedup } from "./sessionDedup.js";
-import { compressCcr } from "./ccr.js";
 import { compressLite } from "./lite.js";
 import { compressResponsesToolOutput } from "./responsesToolOutput.js";
-import { compressRelevance } from "./relevance.js";
-import { compressAggressive } from "./aggressive.js";
-import { compressUltra } from "./ultra.js";
 
 const ENGINE_ORDER = [
   { id: "session-dedup", key: "sessionDedupEnabled", fn: compressSessionDedup },
-  { id: "ccr", key: "ccrEnabled", fn: compressCcr },
   { id: "lite", key: "liteEnabled", fn: compressLite },
   { id: "responses-tool-output", key: "responsesToolOutputEnabled", fn: compressResponsesToolOutput },
-  { id: "relevance", key: "relevanceEnabled", fn: compressRelevance },
-  { id: "aggressive", key: "aggressiveEnabled", fn: compressAggressive },
-  { id: "ultra", key: "ultraEnabled", fn: compressUltra },
 ];
 
 // Runs the enabled engines in stack order over `body` (mutated in place).

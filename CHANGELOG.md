@@ -14,6 +14,7 @@
 - **Dashboard**: open 9Remote sidebar item directly to website
 
 ## Fixes
+- **Token Saver**: remove the destructive compression engines (CCR, Relevance, Aggressive, Ultra) from the stacked pipeline — they discarded information with no recovery path (CCR elided prose middles with no actual archive; Ultra could rewrite the live user message). Kept engines are lossless or recoverable only: Session-Dedup, Lite, Responses Tool Output. Stale saved settings for removed engines are ignored safely
 - **Dashboard**: fix mobile layouts for API Keys card (alignment, code wrap), header breadcrumbs (overflow collision), model chips (full width, break-all), and Claude CLI settings
 - **Gemini**: do not treat properties map as schema node when tool parameter is named `properties` (#4620); rename `$ref` keys in `functionResponse` payloads
 - **Translator**: uniquify duplicate `tool_call_ids` for Gemini (#4532)

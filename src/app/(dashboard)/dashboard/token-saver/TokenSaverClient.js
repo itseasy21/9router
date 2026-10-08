@@ -61,12 +61,8 @@ export default function TokenSaverClient() {
   const [compressionPipelineEnabled, setCompressionPipelineEnabled] = useState(false);
   const [compressionEngines, setCompressionEngines] = useState({
     sessionDedupEnabled: false,
-    ccrEnabled: false,
     liteEnabled: false,
     responsesToolOutputEnabled: false,
-    relevanceEnabled: false,
-    aggressiveEnabled: false,
-    ultraEnabled: false,
   });
   const [locale, setLocale] = useState("en");
 
@@ -120,15 +116,15 @@ export default function TokenSaverClient() {
     patchSetting({ cavemanEnabled: value });
   };
 
-  // OmniRoute-style stacked compression pipeline: master switch + per-engine toggles
+  // Stacked compression pipeline: master switch + per-engine toggles.
+  // Former engines CCR / Relevance / Aggressive / Ultra were removed — they
+  // destroyed information without a recovery path (details in
+  // open-sse/compression/pipeline.js header). Kept engines are lossless or
+  // recoverable only.
   const COMPRESSION_ENGINE_META = [
     { key: "sessionDedupEnabled", name: "Session-Dedup", desc: "Drops content repeated across turns (content-addressed, cross-turn)" },
-    { key: "ccrEnabled", name: "CCR", desc: "Archives large blocks behind retrieve markers, head/tail retained" },
     { key: "liteEnabled", name: "Lite", desc: "Whitespace + blank-line trimming (latency-light baseline)" },
     { key: "responsesToolOutputEnabled", name: "Responses Tool Output", desc: "Lossless JSON minify + bounded diagnostic compression (Responses API)" },
-    { key: "relevanceEnabled", name: "Relevance", desc: "Extractive sentence scoring against the last user query" },
-    { key: "aggressiveEnabled", name: "Aggressive", desc: "Progressive aging of old turns" },
-    { key: "ultraEnabled", name: "Ultra", desc: "Heuristic filler/boilerplate pruning with optional SLM tier (deterministic here)" },
   ];
 
   const handleCompressionPipeline = (value) => {
@@ -1057,10 +1053,10 @@ export default function TokenSaverClient() {
       <Card className="p-6 mt-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
-            <p className="font-medium">Stacked compression pipeline (OmniRoute 12-engine stack)</p>
+            <p className="font-medium">Stacked compression pipeline</p>
             <p className="text-sm text-text-muted">
-              Runs composable engines in stack order: Session-Dedup → CCR → Lite →
-              Responses Tool Output → Relevance → Aggressive → Ultra. RTK,
+              Runs composable engines in stack order: Session-Dedup → Lite →
+              Responses Tool Output. RTK,
               Headroom and Caveman keep their own switches above. Code blocks,
               URLs and structured data are always preserved; every engine is
               fail-open.

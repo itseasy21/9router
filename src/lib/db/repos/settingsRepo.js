@@ -61,12 +61,8 @@ const DEFAULT_SETTINGS = {
   compressionPipelineEnabled: false,
   compressionEngines: {
     sessionDedupEnabled: false,
-    ccrEnabled: false,
     liteEnabled: false,
     responsesToolOutputEnabled: false,
-    relevanceEnabled: false,
-    aggressiveEnabled: false,
-    ultraEnabled: false,
   },
   ponytailEnabled: false,
   ponytailLevel: "full",

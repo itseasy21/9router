@@ -1,15 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { runCompressionPipeline, formatCompressionLog } from "../../open-sse/compression/pipeline.js";
+import { runCompressionPipeline, formatCompressionLog, ENGINE_ORDER } from "../../open-sse/compression/pipeline.js";
 import { compressSessionDedup } from "../../open-sse/compression/sessionDedup.js";
-import { compressCcr } from "../../open-sse/compression/ccr.js";
 import { compressLite } from "../../open-sse/compression/lite.js";
 import { compressResponsesToolOutput } from "../../open-sse/compression/responsesToolOutput.js";
-import { compressRelevance } from "../../open-sse/compression/relevance.js";
-import { compressAggressive } from "../../open-sse/compression/aggressive.js";
-import { compressUltra } from "../../open-sse/compression/ultra.js";
 
 const bigParagraph = (n, seed) =>
   Array.from({ length: n }, (_, i) => `${seed} paragraph line ${i}: lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor.`).join("\n\n");
+
+describe("pipeline composition", () => {
+  // The removed engines (ccr, relevance, aggressive, ultra) were destructive —
+  // they discarded information with no recovery path. Guard against them ever
+  // silently coming back: the pipeline must expose exactly the kept set.
+  it("exposes only the three kept engines, in stack order", () => {
+    expect(ENGINE_ORDER.map((e) => e.id)).toEqual([
+      "session-dedup",
+      "lite",
+      "responses-tool-output",
+    ]);
+  });
+});
 
 describe("session-dedup", () => {
   it("elides a later verbatim repeat of an earlier paragraph", () => {
@@ -25,7 +34,7 @@ describe("session-dedup", () => {
     expect(stats.engine).toBe("session-dedup");
     expect(stats.hits).toBe(1);
     expect(body.messages[2].content).toContain("[session-dedup:ref sha=");
-    // first occurrence intact
+    // first occurrence intact — that's what makes the elision recoverable
     expect(body.messages[1].content).toContain("alpha paragraph line 0");
   });
 
@@ -38,27 +47,6 @@ describe("session-dedup", () => {
     expect(compressSessionDedup(null)).toBeNull();
     expect(compressSessionDedup({})).toBeNull();
     expect(compressSessionDedup({ messages: [{ role: "user" }] })).toBeNull();
-  });
-});
-
-describe("ccr", () => {
-  it("elides the middle of a very large prose block, keeping head and tail", () => {
-    const lines = Array.from({ length: 200 }, (_, i) => `log line ${i} with some filler content to pad size`);
-    const body = { messages: [{ role: "assistant", content: lines.join("\n") }] };
-    const stats = compressCcr(body);
-    expect(stats).not.toBeNull();
-    const out = body.messages[0].content;
-    expect(out).toContain("[ccr:archive sha=");
-    expect(out).toContain("log line 0 ");
-    expect(out).toContain("log line 199");
-    expect(out).not.toContain("log line 100\n");
-  });
-
-  it("never touches code or fenced blocks", () => {
-    const code = "```\n" + Array.from({ length: 200 }, (_, i) => `const x${i} = ${i}; // padding`).join("\n") + "\n```";
-    const body = { messages: [{ role: "assistant", content: code }] };
-    expect(compressCcr(body)).toBeNull();
-    expect(body.messages[0].content).toBe(code);
   });
 });
 
@@ -107,83 +95,6 @@ describe("responses-tool-output", () => {
   });
 });
 
-describe("relevance", () => {
-  const query = "fix the failing auth middleware test";
-  const oldIrrelevant = Array.from({ length: 12 }, (_, i) => `The weather today is quite pleasant number ${i}. We discuss gardening tips at length here.`);
-  const oldRelevant = "The auth middleware test fails because token expiry check uses `<` instead of `<=`. Fix the comparison in auth/middleware.js. The middleware test then passes.";
-
-  it("keeps relevant sentences in old messages, drops irrelevant ones", () => {
-    const body = {
-      messages: [
-        { role: "user", content: oldIrrelevant.join(" ") + " " + oldRelevant },
-        { role: "user", content: oldIrrelevant.join(" ") },
-        { role: "user", content: oldIrrelevant.join(" ") },
-        { role: "user", content: query },
-      ],
-    };
-    const stats = compressRelevance(body);
-    expect(stats).not.toBeNull();
-    const out = body.messages[0].content;
-    expect(out).toContain("auth middleware");
-    expect(out).not.toContain("gardening");
-  });
-
-  it("never touches the most recent messages", () => {
-    const text = oldIrrelevant.join(" ") + " " + oldRelevant;
-    const body = { messages: [{ role: "user", content: text }, { role: "user", content: query }] };
-    const before = body.messages[0].content;
-    compressRelevance(body, { lastUserProtected: 3 });
-    expect(body.messages[0].content).toBe(before);
-  });
-
-  it("fails open when there is no user query", () => {
-    const body = { messages: [{ role: "assistant", content: oldIrrelevant.join(" ") }] };
-    expect(compressRelevance(body)).toBeNull();
-  });
-});
-
-describe("aggressive", () => {
-  it("ages old assistant prose per the progressive-aging gate, keeps recent untouched", () => {
-    const longText = Array.from({ length: 60 }, (_, i) => `assistant rambling line ${i} with detail nobody needs anymore`).join("\n");
-    const body = {
-      messages: [
-        { role: "assistant", content: longText },
-        { role: "user", content: "ok next" },
-        { role: "assistant", content: longText },
-        { role: "user", content: "thanks, continue" },
-        { role: "assistant", content: longText },
-        { role: "user", content: "go on" },
-      ],
-    };
-    const stats = compressAggressive(body, { maxTurns: 6 });
-    expect(stats).not.toBeNull();
-    // Oldest assistant turn (index 0) should be aged
-    expect(body.messages[0].content).toContain("[aggressive:aged]");
-    expect(body.messages[0].content.length).toBeLessThan(longText.length);
-  });
-});
-
-describe("ultra", () => {
-  it("removes filler phrases from prose", () => {
-    const text = "Basically, I'd be happy to help you with that. In order to fix it, simply run the command below. This is padded with some extra text so the message clears the minimum length gate for the engine.";
-    const body = { messages: [{ role: "assistant", content: text }] };
-    const stats = compressUltra(body);
-    expect(stats).not.toBeNull();
-    const out = body.messages[0].content;
-    expect(out).not.toMatch(/basically/i);
-    expect(out).not.toMatch(/happy to help/i);
-    expect(out).toContain("to fix it");
-  });
-
-  it("never rewrites fenced code", () => {
-    const code = "```\nconst x = 1; // basically filler comment here\n```";
-    const body = { messages: [{ role: "assistant", content: `Preamble. ${code} Basically done.` }] };
-    const before = body.messages[0].content;
-    compressUltra(body);
-    expect(body.messages[0].content).toContain(code);
-  });
-});
-
 describe("pipeline", () => {
   it("runs only enabled engines, in order, and mutates the body", async () => {
     const repeated = bigParagraph(3, "alpha");
@@ -193,10 +104,9 @@ describe("pipeline", () => {
         { role: "user", content: `q2\n\n${repeated}\n\n\n\ntrailing   ` },
       ],
     };
-    const stats = await runCompressionPipeline(body, { sessionDedupEnabled: true, liteEnabled: true, ccrEnabled: false });
+    const stats = await runCompressionPipeline(body, { sessionDedupEnabled: true, liteEnabled: true });
     const ids = stats.map((s) => s.engine);
     expect(ids).toContain("lite");
-    expect(ids).not.toContain("ccr");
     expect(body.messages[1].content).toContain("[session-dedup:ref sha=");
   });
 
@@ -208,9 +118,19 @@ describe("pipeline", () => {
     expect(JSON.stringify(body)).toBe(before);
   });
 
+  it("ignores unknown/stale engine keys from old saved settings", async () => {
+    const body = { messages: [{ role: "user", content: "hello world" }] };
+    const before = JSON.stringify(body);
+    // Old deployments may persist ccrEnabled/ultraEnabled etc. — the pipeline
+    // must not act on them now that the engines are gone.
+    const stats = await runCompressionPipeline(body, { ccrEnabled: true, ultraEnabled: true, relevanceEnabled: true, aggressiveEnabled: true });
+    expect(stats).toEqual([]);
+    expect(JSON.stringify(body)).toBe(before);
+  });
+
   it("fail-open: engine errors do not break the pipeline", async () => {
     const body = { messages: [{ role: "user", content: "x" }] };
-    const stats = await runCompressionPipeline(body, { sessionDedupEnabled: true, ccrEnabled: true, liteEnabled: true });
+    const stats = await runCompressionPipeline(body, { sessionDedupEnabled: true, liteEnabled: true });
     expect(Array.isArray(stats)).toBe(true);
   });
 
