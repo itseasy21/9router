@@ -1,3 +1,9 @@
+# v0.5.100 (2026-10-09)
+
+## Fixes
+- **BytePlus**: remove Seed 2.0 models (Pro/Code/Mini/Lite) from the static registry catalog — deprecated upstream entries that kept reappearing in the model selector
+- **Tests**: default `DATA_DIR` to a temp dir for the whole vitest run (`tests/test.setup.js`) — a future test that forgets per-file DB isolation can no longer pollute the real `~/.9router` database (previously caused 350+ phantom fixture connections showing up as `seed-*` providers on the Usage topology)
+
 # v0.5.99 (2026-10-08)
 
 ## Features
