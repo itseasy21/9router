@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Default DATA_DIR to a temp dir for every worker — see test.setup.js
+    setupFiles: ["./test.setup.js"],
     include: ["**/*.test.js"],
     // Don't scan into git worktrees nested under .claude/ — they carry their
     // own copies of the test files but lack an installed node_modules (open-sse,
