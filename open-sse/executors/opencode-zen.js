@@ -3,11 +3,7 @@ import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import {
-  concealFingerprintToolNames,
-  concealFingerprintHistoryNames,
-  appendMissingFingerprintTools,
-  retargetToolChoice,
-  recordRenamedToolNames,
+  applyFingerprintTools,
 } from "../utils/opencodeFingerprint.js";
 import {
   normalizeResponsesInput,
@@ -20,21 +16,15 @@ const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeZenSession";
 const MAX_SESSION_LENGTH = 256;
 
-const RESPONSES_BASE_URL = "https://opencode.ai/zen/v1/responses";
+const RESPONSES_BASE_URL = "https://opencode.ai/inference/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
-const OPENCODE_UA = "opencode/1.19.0";
+const OPENCODE_UA = "opencode/latest/2.0.26/cli";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-// Free-tier fingerprint (mirrors opencode executor, PR #4132): upstream 403s
-// requests without the file-search quartet and without stream:true.
-const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
 
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
-  if (!m) return false;
-  const major = parseInt(m[1], 10);
-  const minor = parseInt(m[2], 10);
-  return major > 1 || (major === 1 && minor >= 17);
+  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
+  return !!m && parseInt(m[1], 10) >= 2;
 }
 
 function unstableRandom() {
@@ -107,56 +97,18 @@ export function translateSessionId(sessionId, clientTool = "", timestamp = Date.
   return id;
 }
 
-function toolNameOf(tool) {
-  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
-  const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function) ? tool.function : null;
-  const raw = typeof tool.name === "string" ? tool.name : (typeof fn?.name === "string" ? fn.name : "");
-  return raw.trim();
-}
-
 function ensureChatFingerprintTools(body) {
-  if (!body || typeof body !== "object") return;
-  const present = new Set();
-  if (Array.isArray(body.tools)) {
-    for (const tool of body.tools) {
-      const name = toolNameOf(tool);
-      if (name) present.add(name);
-    }
-  } else {
-    body.tools = [];
-  }
-  for (const name of OPENCODE_FINGERPRINT_TOOLS) {
-    if (present.has(name)) continue;
-    body.tools.push({
-      type: "function",
-      function: {
-        name,
-        description: `OpenCode built-in ${name} tool`,
-        parameters: { type: "object", properties: {} },
-      },
-    });
-    present.add(name);
-  }
+  applyFingerprintTools(body, false);
 }
 
 function ensureResponsesFingerprintTools(body) {
-  if (!body || typeof body !== "object") return;
-  // Shared helper: canonicalize fingerprint quartet case-variants (client's
-  // "Bash" → "bash") with a rename map so streamed tool calls restore the
-  // client's spelling, dedup duplicates, and append only genuinely missing
-  // members as decoys. A previous local copy added lowercase decoys NEXT TO
-  // the client's "Bash" (case-sensitive present-check), so the model saw two
-  // bash tools — one with an empty schema — and calling the decoy freeballed
-  // arguments that failed client validation ("required parameter 'command'
-  // is missing").
-  const { tools, map } = concealFingerprintToolNames(body.tools);
-  body.tools = appendMissingFingerprintTools(tools, true);
-  // History must match the cloaked declaration names or the model imitates the
-  // history spelling (e.g. client "Bash" in prior turns) and calls an undeclared
-  // tool with empty args (live-probed failure mode on multi-turn sessions).
-  concealFingerprintHistoryNames(body);
-  retargetToolChoice(body, map);
-  recordRenamedToolNames(body, map);
+  // Shared helper (new v2 pipeline): append OpenCode's verbatim read/shell
+  // definitions, alias conflicting caller tools (including their prior calls
+  // in history), retarget tool_choice (never "none"), and record the rename
+  // map so streamed tool calls restore the client's spelling. Case variants
+  // such as Claude Code's Read/Bash pass through untouched — upstream accepts
+  // them next to read/shell.
+  applyFingerprintTools(body, true);
 }
 
 function normalizeSession(value) {
@@ -337,9 +289,7 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     }
     delete out.max_tokens;
     delete out.max_completion_tokens;
-    if (typeof out.max_output_tokens === "number") {
-      out.max_output_tokens = Math.min(Math.max(out.max_output_tokens, 16), 65536);
-    }
+    if (typeof out.max_output_tokens === "number" && out.max_output_tokens < 16) out.max_output_tokens = 16;
     if (out.reasoning_effort !== undefined && out.reasoning === undefined) {
       out.reasoning = { effort: out.reasoning_effort, summary: "auto" };
     }

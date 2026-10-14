@@ -1,119 +1,131 @@
-// Live-probed regression (opencode free muse /zen/v1/responses): a multi-turn
-// session sends prior tool calls in input[] history with the CLIENT's spelling
-// ("Bash"), while applyFingerprintTools cloaks only the tools[] declarations to
-// lowercase ("bash"). The model then imitates the history spelling, calls the
-// undeclared "Bash", and emits EMPTY arguments (argsFinal="" → client-side
-// "required parameter 'command' is missing"). History items must be
-// canonicalized to match the declarations; no reverse mapping needed since
-// history is context-only and never streamed back.
+// OpenCode fingerprint history handling (v2 semantics).
+//
+// v2 replaced the old quartet case-canonicalization with tool aliasing:
+// a caller tool whose name exactly collides with a fingerprint tool (read/
+// shell) under a different definition is aliased (read -> read_client) and
+// its PRIOR-TURN calls in history are renamed via aliasHistoryToolCalls so
+// the model never reads its own earlier calls as calls to OpenCode's tool.
+// Case variants (Bash/Read) are respected as separate tools and pass
+// through untouched; upstream accepts them next to read/shell.
 import { describe, expect, it } from "vitest";
+import { concealFingerprintToolNames, aliasHistoryToolCalls, takeRenamedToolNames } from "../../open-sse/utils/opencodeFingerprint.js";
 import { OpenCodeExecutor } from "../../open-sse/executors/opencode.js";
 import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
-import {
-  applyFingerprintTools,
-  concealFingerprintHistoryNames,
-} from "../../open-sse/utils/opencodeFingerprint.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import "../translator/registerAll.js";
 
-const FREE_MODEL = "muse-spark-1.3-contributor-free";
-const ZEN_RESPONSES_MODEL = "muse-spark-1.3";
-
-const BASH_TOOL = {
-  type: "function",
-  function: {
-    name: "Bash",
-    description: "Run a shell command.",
-    parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
-  },
+const CLIENT_READ_DEF = {
+  description: "Client's own read tool",
+  parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+};
+const CLIENT_READ_SCHEMA = {
+  type: "object",
+  properties: { path: { type: "string" } },
+  required: ["path"],
 };
 
-describe("concealFingerprintHistoryNames", () => {
-  it("canonicalizes quartet case-variants in Responses function_call history", () => {
+describe("aliasHistoryToolCalls (v2)", () => {
+  it("renames prior function_call history for aliased caller tools", () => {
+    const { map } = concealFingerprintToolNames([
+      { name: "read", ...CLIENT_READ_DEF },
+    ]);
     const body = {
       input: [
-        { type: "function_call", name: "Bash", call_id: "call_1", arguments: "{\"command\":\"ls\"}" },
-        { type: "function_call_output", call_id: "call_1", output: "ok" },
-        { type: "message", role: "user", content: [{ type: "input_text", text: "next" }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "list files" }] },
+        { type: "function_call", name: "read", call_id: "call_1", arguments: '{"path":"/etc"}' },
       ],
     };
-    concealFingerprintHistoryNames(body);
-    expect(body.input[0].name).toBe("bash");
-    // Non-quartet history names are outside the fingerprint contract
-    const body2 = {
-      input: [{ type: "function_call", name: "mcp__slack.post_message", call_id: "call_2", arguments: "{}" }],
-    };
-    concealFingerprintHistoryNames(body2);
-    expect(body2.input[0].name).toBe("mcp__slack.post_message");
+    aliasHistoryToolCalls(body, map);
+    expect(body.input[1].name).toBe("read_client");
+    expect(body.input[1].call_id).toBe("call_1");
+    expect(body.input[0].content[0].text).toBe("list files");
   });
 
-  it("canonicalizes assistant tool_calls in chat-shaped history", () => {
+  it("renames assistant tool_calls in chat-shaped history", () => {
+    const { map } = concealFingerprintToolNames([
+      { type: "function", function: { name: "read", ...CLIENT_READ_DEF } },
+    ]);
     const body = {
       messages: [
-        { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "Bash", arguments: "{}" } }] },
-        { role: "tool", tool_call_id: "c1", content: "ok" },
+        { role: "user", content: "look" },
+        { role: "assistant", tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: '{"path":"/etc"}' } }] },
       ],
     };
-    concealFingerprintHistoryNames(body);
-    expect(body.messages[0].tool_calls[0].function.name).toBe("bash");
+    aliasHistoryToolCalls(body, map);
+    expect(body.messages[1].tool_calls[0].function.name).toBe("read_client");
   });
 
-  it("leaves already-canonical and flat-call names untouched", () => {
+  it("leaves unrelated and case-variant names untouched", () => {
+    const { map } = concealFingerprintToolNames([
+      { name: "read", ...CLIENT_READ_DEF },
+    ]);
     const body = {
-      messages: [{ role: "assistant", tool_calls: [{ name: "read" }] }],
-      input: [{ type: "function_call", name: "grep", call_id: "c", arguments: "{}" }],
+      input: [
+        { type: "function_call", name: "Bash", call_id: "c1", arguments: '{"command":"ls"}' },
+        { type: "function_call", name: "edit_file", call_id: "c2", arguments: "{}" },
+      ],
     };
-    concealFingerprintHistoryNames(body);
-    expect(body.messages[0].tool_calls[0].name).toBe("read");
-    expect(body.input[0].name).toBe("grep");
+    aliasHistoryToolCalls(body, map);
+    expect(body.input[0].name).toBe("Bash");
+    expect(body.input[1].name).toBe("edit_file");
+  });
+
+  it("is a no-op with an empty map or missing body", () => {
+    const body = { input: [{ type: "function_call", name: "read", call_id: "c1", arguments: "{}" }] };
+    const before = JSON.stringify(body);
+    aliasHistoryToolCalls(body, new Map());
+    aliasHistoryToolCalls(null, new Map([["a", "b"]]));
+    expect(JSON.stringify(body)).toBe(before);
   });
 });
 
-describe("executor integration — history matches cloaked declarations", () => {
-  it("opencode free executor rewrites 'Bash' function_call history to 'bash'", () => {
-    const ex = new OpenCodeExecutor();
+describe("executor integration — history matches aliased declarations", () => {
+  it("opencode free executor aliases a colliding client tool and its history", () => {
     const body = {
-      model: FREE_MODEL,
-      input: [
-        { type: "function_call", name: "Bash", call_id: "call_1", arguments: "{\"command\":\"echo hi\"}" },
-        { type: "function_call_output", call_id: "call_1", output: "hi" },
+      model: "muse-spark-1.3-contributor-free",
+      messages: [
+        { role: "user", content: "read the file" },
+        { role: "assistant", tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: '{"path":"/etc/hosts"}' } }] },
+        { role: "tool", tool_call_id: "c1", content: "127.0.0.1 localhost" },
       ],
-      messages: [{ role: "user", content: "continue" }],
-      tools: [BASH_TOOL],
+      tools: [{ type: "function", function: { name: "read", description: CLIENT_READ_DEF.description, parameters: CLIENT_READ_SCHEMA } }],
     };
-    const out = ex.transformRequest(FREE_MODEL, body, true, {});
-    const declared = out.tools.filter((t) => t?.type === "function").map((t) => t.name);
-    expect(declared).toContain("bash");
-    expect(declared).not.toContain("Bash");
-    const historyCalls = out.input.filter((i) => i?.type === "function_call");
-    for (const item of historyCalls) {
-      expect(declared).toContain(item.name); // history names must be declared tools
-    }
+    const executor = new OpenCodeExecutor();
+    executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+    const toolName = (t) => t.function?.name ?? t.name;
+    const names = body.tools.map(toolName);
+    expect(names).not.toContain("bash");
+    expect(names).toContain("shell");
+    // client's 'read' traveled under an alias; OpenCode's own read follows it
+    expect(names).toContain("read_client");
+    expect(names.filter((n) => n === "read").length).toBe(1);
+    const map = takeRenamedToolNames(body);
+    expect(map.get("read_client")).toBe("read");
+    expect(body.messages[1].tool_calls[0].function.name).toBe("read_client");
   });
 
-  it("opencode-zen responses executor rewrites history too", () => {
-    const ex = new OpenCodeZenExecutor();
-    const body = {
-      model: ZEN_RESPONSES_MODEL,
-      input: [
-        { type: "function_call", name: "Read", call_id: "call_9", arguments: "{\"file_path\":\"/x\"}" },
-        { type: "function_call_output", call_id: "call_9", output: "contents" },
+  it("opencode-zen responses executor aliases history function_calls too", () => {
+    const claude = {
+      model: "muse-spark-1.3-contributor",
+      max_tokens: 2048,
+      stream: true,
+      system: [{ type: "text", text: "sys" }],
+      tools: [{ name: "read", description: CLIENT_READ_DEF.description, input_schema: CLIENT_READ_SCHEMA }],
+      messages: [
+        { role: "user", content: [{ type: "text", text: "go" }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: { path: "/x" } }] },
       ],
-      messages: [{ role: "user", content: "go on" }],
-      tools: [BASH_TOOL],
     };
-    const out = ex.transformRequest(ZEN_RESPONSES_MODEL, body, true, {});
-    const declared = out.tools.filter((t) => t?.type === "function").map((t) => t.name);
+    const translated = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, "muse-spark-1.3-contributor", claude, true, null, "opencode-zen");
+    const out = new OpenCodeZenExecutor().transformRequest("muse-spark-1.3-contributor", translated, true, null);
+    const names = out.tools.map((t) => t.name);
+    expect(names).toContain("read");
+    expect(names).toContain("read_client");
+    const map = takeRenamedToolNames(out);
+    expect(map.get("read_client")).toBe("read");
     const historyCalls = out.input.filter((i) => i?.type === "function_call");
-    expect(historyCalls.map((i) => i.name)).toEqual(["read"]);
-    for (const item of historyCalls) expect(declared).toContain(item.name);
-  });
-
-  it("applyFingerprintTools covers history in one pass and keeps the rename map declaration-only", () => {
-    const body = {
-      tools: [BASH_TOOL],
-      input: [{ type: "function_call", name: "Bash", call_id: "c", arguments: "{}" }],
-    };
-    const map = applyFingerprintTools(body, true);
-    expect([...map.entries()]).toEqual([["bash", "Bash"]]); // response restore unaffected
-    expect(body.input[0].name).toBe("bash");
+    expect(historyCalls.length).toBeGreaterThan(0);
+    for (const call of historyCalls) expect(call.name).toBe("read_client");
   });
 });
