@@ -33,6 +33,7 @@ const FORMAT_LEVELS = {
   minimax: L.onOff,
   hunyuan: L.base,
   step: L.base,
+  nous: L.base,
   ollama: L.levelMax,
   modal: L.levelMax,   // reasoning:{enabled,effort} — passes max through (normalizeOpenAILevel clamps only when absent)
 };
@@ -44,6 +45,8 @@ const CLAUDE_NO_XHIGH = ["none", "low", "medium", "high", "max"];
 
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
+  // Gemini 4 (Argon) rejects "minimal" with 400 — LOW is the floor; cannot disable thinking.
+  { pattern: "*gemini-4*", levels: ["low", "medium", "high"] },
   { pattern: "*claude*4.6*", levels: CLAUDE_NO_XHIGH },
   { pattern: "*claude*4-6*", levels: CLAUDE_NO_XHIGH },
   // AgentRouter relays to upstream models that keep their native effort limits:
@@ -91,11 +94,6 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "hy3*",         levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4*",         levels: ["high"] },
   { provider: "codebuddy-cn", pattern: "kimi-k2.8-preview",  levels: ["low", "medium", "high"] },
-  // NVIDIA NIM serves GLM-5.3 models on the OpenAI wire and accepts the full
-  // effort enum (verified live: none|minimal|low|medium|high|xhigh|max all 200,
-  // only "auto" rejected) — include max so the client level passes through
-  // instead of clamping to xhigh.
-  { provider: "nvidia", pattern: "z-ai/glm-5.3*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
   // codebuddy-intl rides the same gateway catalog, so its deepseek levels match.
   { provider: "codebuddy-intl", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   // MiniMax Code (mcode) — adaptive effort via output_config.effort. M3.1
