@@ -25,11 +25,18 @@ describe("agentrouter/gpt-6-astra catalog", () => {
     expect(entry).toBeDefined();
     expect(entry.targetFormat).toBe(FORMATS.OPENAI_RESPONSES);
     expect(getModelTargetFormat("agentrouter", MODEL)).toBe(FORMATS.OPENAI_RESPONSES);
+    // gpt-6.1-sol rides the same responses lane
+    expect(getModelTargetFormat("agentrouter", "gpt-6.1-sol")).toBe(FORMATS.OPENAI_RESPONSES);
   });
 
-  it("keeps other agentrouter models on the claude wire", () => {
-    expect(getModelTargetFormat("agentrouter", "gpt-5.6-sol")).toBeNull();
-    expect(getModelTargetFormat("agentrouter", "glm-5.3")).toBeNull();
+  it("routes agentrouter models by id prefix (gpt-* → responses, claude-* → claude, else → openai)", () => {
+    expect(getModelTargetFormat("agentrouter", "gpt-5.6-sol")).toBe(FORMATS.OPENAI_RESPONSES);
+    expect(getModelTargetFormat("agentrouter", "gpt-6.1-sol")).toBe(FORMATS.OPENAI_RESPONSES);
+    expect(getModelTargetFormat("agentrouter", "claude-opus-5")).toBe(FORMATS.CLAUDE);
+    expect(getModelTargetFormat("agentrouter", "deepseek-v4-flash")).toBe(FORMATS.OPENAI);
+    expect(getModelTargetFormat("agentrouter", "glm-5.3")).toBe(FORMATS.OPENAI);
+    // Non-registry (custom/added) ids follow the same prefix rule
+    expect(getModelTargetFormat("agentrouter", "mistral-latest")).toBe(FORMATS.OPENAI);
   });
 
   it("never takes a sourceFormat-matched transport (agentrouter has none — always translates)", () => {
@@ -64,12 +71,22 @@ describe("AgentRouterExecutor routing + request shaping", () => {
   it("honors the thinking suffix when picking the endpoint", () => {
     const ex = new AgentRouterExecutor();
     expect(ex.buildUrl("gpt-6-astra(max)")).toBe("https://agentrouter.org/v1/responses");
+    expect(ex.buildUrl("gpt-6.1-sol(xhigh)")).toBe("https://agentrouter.org/v1/responses");
   });
 
-  it("leaves other agentrouter models on the default /messages wire", () => {
+  it("splits the lanes: gpt-* → responses, claude-* → messages, others → chat completions", () => {
     const ex = new AgentRouterExecutor();
-    expect(ex.buildUrl("gpt-5.6-sol")).toBe("https://agentrouter.org/v1/messages?beta=true");
-    expect(ex.buildUrl("glm-5.3")).toBe("https://agentrouter.org/v1/messages?beta=true");
+    expect(ex.buildUrl("gpt-5.6-sol")).toBe("https://agentrouter.org/v1/responses");
+    expect(ex.buildUrl("gpt-6.1-sol")).toBe("https://agentrouter.org/v1/responses");
+    expect(ex.buildUrl("claude-opus-5")).toBe("https://agentrouter.org/v1/messages?beta=true");
+    expect(ex.buildUrl("glm-5.3")).toBe("https://agentrouter.org/v1/chat/completions");
+    expect(ex.buildUrl("deepseek-v4-flash")).toBe("https://agentrouter.org/v1/chat/completions");
+    // Non-registry ids hit the chat-completions fallback lane too
+    expect(ex.buildUrl("mistral-latest")).toBe("https://agentrouter.org/v1/chat/completions");
+    // A stale runtimeTransport must not drag non-gpt models off their lane either
+    expect(ex.buildUrl("glm-5.3", true, 0, {
+      runtimeTransport: { baseUrl: "https://agentrouter.org/v1/messages?beta=true" },
+    })).toBe("https://agentrouter.org/v1/chat/completions");
   });
 
   it("normalizes max tokens + reasoning for the responses payload", () => {
@@ -152,19 +169,19 @@ describe("AgentRouterExecutor routing + request shaping", () => {
     expect(out.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
   });
 
-  it("does not reshape non-astra models", () => {
+  it("does not reshape non-gpt models", () => {
     const ex = new AgentRouterExecutor();
-    const body = { model: "gpt-5.6-sol", messages: [], max_tokens: 100, reasoning_effort: "high" };
-    const out = ex.transformRequest("gpt-5.6-sol", body, true, {});
+    const body = { model: "deepseek-v4-flash", messages: [], max_tokens: 100, reasoning_effort: "high" };
+    const out = ex.transformRequest("deepseek-v4-flash", body, true, {});
     expect(out.max_tokens).toBe(100);
     expect(out.reasoning).toBeUndefined();
-    expect(out.stream).toBeUndefined(); // base transform never touches stream for non-astra models
+    expect(out.stream).toBeUndefined(); // base transform never touches stream for chat-wire models
   });
 
-  it("keeps sampling knobs on non-astra models (strip is astra-only)", () => {
+  it("keeps sampling knobs on non-gpt models (strip is gpt-lane-only)", () => {
     const ex = new AgentRouterExecutor();
-    const body = { model: "gpt-5.6-sol", messages: [], top_p: 0.9, temperature: 0.5 };
-    const out = ex.transformRequest("gpt-5.6-sol", body, true, {});
+    const body = { model: "deepseek-v4-flash", messages: [], top_p: 0.9, temperature: 0.5 };
+    const out = ex.transformRequest("deepseek-v4-flash", body, true, {});
     expect(out.top_p).toBe(0.9);
     expect(out.temperature).toBe(0.5);
   });

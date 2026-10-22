@@ -20,15 +20,19 @@ export default {
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
   },
   models: [
-    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
+    // Endpoint lanes by model-id prefix (see getModelTargetFormat family fallback +
+    // AgentRouterExecutor.buildUrl):
+    //   gpt-*    → /v1/responses  (AgentRouter's /v1/messages relay forwards to
+    //             upstream /v1/chat/completions, which rejects "function tools with
+    //             reasoning_effort" (400); its /v1/responses endpoint accepts both —
+    //             same pattern as opencode-go's muse-spark/gpt-5.6-luna)
+    //   claude-* → /v1/messages  (the deterministic default transport below)
+    //   others   → /v1/chat/completions (chat-completions fallback lane)
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", targetFormat: "openai-responses" },
+    { id: "gpt-6.1-sol", name: "GPT 6.1 Sol", targetFormat: "openai-responses" },
+    { id: "gpt-6-astra", name: "GPT 6 Astra", targetFormat: "openai-responses" },
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
     { id: "glm-5.3", name: "GLM 5.3" },
-    // gpt-6-astra (MaaS_GP_6_astra_*): AgentRouter's /v1/messages relay forwards to
-    // the upstream /v1/chat/completions, which rejects "function tools with
-    // reasoning_effort" (400). Its /v1/responses endpoint accepts both, so this
-    // model must always target the Responses wire — same pattern as opencode-go's
-    // muse-spark/gpt-5.6-luna (see chatCore targetFormat + AgentRouterExecutor).
-    { id: "gpt-6-astra", name: "GPT 6 Astra", targetFormat: "openai-responses" },
   ],
 };

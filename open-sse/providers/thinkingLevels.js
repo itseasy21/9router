@@ -51,7 +51,7 @@ const PATTERN_THINKING = [
   { pattern: "*claude*4-6*", levels: CLAUDE_NO_XHIGH },
   // AgentRouter relays to upstream models that keep their native effort limits:
   // GLM-5.3 accepts max (z.ai enum low|high|max — no none/disable); GPT-5.6 Sol
-  // tops out at xhigh (upstream rejects max) via the claude-adaptive bridge.
+  // tops out at xhigh (upstream rejects max) on the /v1/responses lane.
   { provider: "agentrouter", pattern: "glm-5.3*",     levels: ["low", "high", "max"] },
   { provider: "agentrouter", pattern: "gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh"] },
   // gpt-6-astra rides /v1/responses (reasoning.effort, no disable) — GPT-6.x enum.

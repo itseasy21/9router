@@ -25,7 +25,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
-import { isAgentRouterTimeBoundModel, isAgentRouterBudgetPaused, getAgentRouterPauseUntil } from "open-sse/services/agentrouterWindows.js";
+import { isAgentRouterTimeBoundModel, isAgentRouterBudgetPaused, getAgentRouterPauseUntil, formatAgentRouterWindowTimes } from "open-sse/services/agentrouterWindows.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
 
@@ -236,13 +236,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // AgentRouter time-bound models (claude-opus-5 / gpt-6-astra): while paused for
   // budget-pool exhaustion, skip dispatch so combos fall through to the next model
-  // and solo requests get a 503 with retry-after until the next window.
+  // and solo requests get a 503 with retry-after until the next window. Each model
+  // has its own release times (astra: 07:00/19:00 UTC, opus-5: 02:00/11:00 UTC).
   if (isAgentRouterTimeBoundModel(provider, model) && isAgentRouterBudgetPaused(provider, model)) {
     const untilMs = getAgentRouterPauseUntil(model) || Date.now();
     const retryAfter = new Date(untilMs).toISOString();
     const retryHuman = formatRetryAfter(retryAfter);
-    log.warn("CHAT", `[${provider}/${model}] paused until next budget window (${retryHuman})`);
-    return unavailableResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, `[${provider}/${model}] budget window exhausted — retry after next allocation window`, retryAfter, retryHuman);
+    const windowTimes = formatAgentRouterWindowTimes(model);
+    log.warn("CHAT", `[${provider}/${model}] paused until next budget window (${retryHuman}) | windows: ${windowTimes}`);
+    return unavailableResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, `[${provider}/${model}] supply exhausted — next batch at ${windowTimes}`, retryAfter, retryHuman);
   }
 
   // Routing shown in the unified "▶" line (client model → provider/model)

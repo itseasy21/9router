@@ -1,13 +1,14 @@
 import { DefaultExecutor } from "./default.js";
 
-// AgentRouter's Claude-wire endpoint (/v1/messages?beta=true) internally relays to
-// the upstream /v1/chat/completions, which rejects "function tools with
-// reasoning_effort" for gpt-6-astra (MaaS_GP_6_astra_*) with HTTP 400 and points at
-// /v1/responses. That endpoint accepts both, so gpt-6-astra is a responses-only
-// model: chatCore resolves its targetFormat to openai-responses (registry
-// targetFormat) and this executor pins the URL + normalizes the Responses payload,
-// mirroring the opencode-go Muse Spark handling.
+// AgentRouter routes each model by its id prefix (mirrored by the
+// getModelTargetFormat family fallback in providerModels.js):
+//   gpt-*    → /v1/responses — the Claude-wire /v1/messages endpoint relays to the
+//              upstream /v1/chat/completions, which rejects "function tools with
+//              reasoning_effort" (400) and points at /v1/responses, which accepts both.
+//   claude-* → /v1/messages  — the deterministic default (claude wire) transport.
+//   others   → /v1/chat/completions — plain OpenAI-compatible fallback lane.
 const RESPONSES_BASE_URL = "https://agentrouter.org/v1/responses";
+const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
 
 // Strip the thinking suffix "model(level)" so checks hit the base id.
 function baseModelId(model) {
@@ -15,7 +16,13 @@ function baseModelId(model) {
 }
 
 function isResponsesModel(model) {
-  return /^gpt-6-astra/i.test(baseModelId(model));
+  return /^gpt-/i.test(baseModelId(model));
+}
+
+// Neither the gpt nor claude lane → plain chat-completions fallback.
+function isChatCompletionsModel(model) {
+  const base = baseModelId(model);
+  return !/^gpt-/i.test(base) && !/^claude-/i.test(base);
 }
 
 export class AgentRouterExecutor extends DefaultExecutor {
@@ -24,8 +31,10 @@ export class AgentRouterExecutor extends DefaultExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    // gpt-6-astra lives on /responses even when a stale runtimeTransport leaks in.
+    // gpt-* live on /responses even when a stale runtimeTransport leaks in.
     if (isResponsesModel(model)) return RESPONSES_BASE_URL;
+    // claude-* keep the registry default /messages?beta=true wire.
+    if (isChatCompletionsModel(model)) return CHAT_COMPLETIONS_BASE_URL;
     return super.buildUrl(model, stream, urlIndex, credentials);
   }
 
@@ -33,7 +42,7 @@ export class AgentRouterExecutor extends DefaultExecutor {
     const out = super.transformRequest(model, body, stream, credentials);
     if (!isResponsesModel(model || body?.model)) return out;
 
-    // AgentRouter's /v1/responses relay rejects sampling knobs for gpt-6-astra
+    // AgentRouter's /v1/responses relay rejects sampling knobs for gpt-* models
     // ("Unsupported parameter: 'top_p' is not supported with this model", 400).
     // Mirror the Codex Responses handling: strip the sampling family — the model
     // is reasoning-first and ignores them anyway.

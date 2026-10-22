@@ -360,18 +360,17 @@ export const PROVIDER_CAPABILITIES = {
     "laguna-s-2.1":  { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 32000 },
     "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 },
   },
-  // AgentRouter — Claude wire endpoint for ALL models (internal routing translates).
-  // Non-claude ids must still emit claude thinking{} blocks, not their native
-  // reasoning_effort, or AgentRouter rejects them. claude-opus-5 keeps claude-adaptive.
-  // glm-5.3 uses the adaptive effort model (output_config.effort, supports max —
-  // see PATTERN_THINKING in thinkingLevels.js) instead of budget 128k.
+  // AgentRouter — endpoint lanes by model id (see getModelTargetFormat family
+  // fallback + AgentRouterExecutor.buildUrl):
+  //   gpt-* → /v1/responses: reasoning via OpenAI reasoning.effort (same enum as
+  //           codex gpt-6). claude-* → /v1/messages (claude wire). every other id
+  //           → /v1/chat/completions fallback: openai reasoning_effort.
   "agentrouter": {
-    "gpt-5.6-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-    "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 50000 },
-    "glm-5.3":          { reasoning: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-    // gpt-6-astra targets AgentRouter /v1/responses (chat relay rejects tools + effort).
-    // Reasoning via OpenAI reasoning.effort on the Responses wire — same enum as codex gpt-6.
+    "gpt-5.6-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 128000 },
+    "gpt-6.1-sol":      { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 128000 },
     "gpt-6-astra":      { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 },
+    "deepseek-v4-flash":{ vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 50000 },
+    "glm-5.3":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 128000 },
   },
   // Modal — OpenAI-compatible gateway. GLM-5.3-Flash is multimodal + reasons via
   // reasoning:{enabled,effort}. The `*glm*` pattern would mis-match it to `zai` and

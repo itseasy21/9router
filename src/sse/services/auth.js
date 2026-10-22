@@ -1,7 +1,7 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
-import { noteAgentRouterBudgetError } from "open-sse/services/agentrouterWindows.js";
+import { noteAgentRouterBudgetError, formatAgentRouterWindowTimes } from "open-sse/services/agentrouterWindows.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -252,9 +252,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const backoffLevel = conn?.backoffLevel || 0;
 
   // AgentRouter time-bound models: on budget-pool exhaustion, pause the model
-  // until the next allocation window (02:00 / 11:00 UTC) so dispatch can skip it.
+  // until its next allocation window so dispatch can skip it. The window times
+  // are per model (astra and opus-5 no longer share a schedule).
   if (noteAgentRouterBudgetError(resolveProviderId(provider), model, status, errorText)) {
-    log.warn("AUTH", `agentrouter/${model} budget pool exhausted — paused until next window (02:00/11:00 UTC)`);
+    log.warn("AUTH", `agentrouter/${model} budget pool exhausted — paused until next window (${formatAgentRouterWindowTimes(model)})`);
   }
 
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
