@@ -16,5 +16,14 @@ export default {
     format: "ollama",
     thinkingFormat: "ollama",
   },
-  serviceKinds: ["llm"],
+  models: [
+    { id: "clef", name: "Clef", kind: "systemone" },
+    { id: "clef-flash", name: "Clef Flash", kind: "systemone" },
+  ],
+  serviceKinds: ["llm", "systemone"],
+  systemoneConfig: {
+    baseUrl: "http://localhost:11434/v1/systemone",
+    // Saved host (providerSpecificData.baseUrl) is joined with this path.
+    path: "/v1/systemone",
+  },
 };

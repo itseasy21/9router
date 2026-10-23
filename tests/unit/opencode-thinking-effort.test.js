@@ -12,11 +12,13 @@ import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 // reasoning_effort none|low|medium|high|max and rejects xhigh/minimal/auto.
 describe("opencode thinking effort", () => {
   it("stealth ids resolve reasoning:true with the opencode format", () => {
-    for (const id of ["x-preview-f-free", "big-pickle", "muse-spark-1.2", "mimo-v2.5-free"]) {
+    for (const id of ["x-preview-f-free", "big-pickle", "mimo-v2.5-free"]) {
       const caps = getCapabilitiesForModel("opencode", id);
       expect(caps.reasoning).toBe(true);
       expect(caps.thinkingFormat).toBe("opencode");
     }
+    // muse-spark-1.2 rides /zen/v1/responses, whose enum is the OpenAI one.
+    expect(getCapabilitiesForModel("opencode", "muse-spark-1.2").thinkingFormat).toBe("openai");
   });
 
   it("claude budget intent → reasoning_effort on x-preview-f-free (was stripped)", () => {
@@ -52,9 +54,11 @@ describe("opencode thinking effort", () => {
     expect(out.output_config).toBeUndefined();
   });
 
-  it("UI levels expose the gateway enum (incl. max) for stealth and vendor ids", () => {
+  it("UI levels follow each id's own caps: gateway enum for stealth, OpenAI enum for the free lane", () => {
     expect(getThinkingLevels("opencode", "x-preview-f-free")).toEqual(["none", "low", "medium", "high", "max"]);
-    expect(getThinkingLevels("opencode", "gpt-5.6-sol")).toEqual(["none", "low", "medium", "high", "max"]);
+    // Per-model caps own the shape now (upstream #4816): the OpenRouter-backed free
+    // lane keeps the full OpenAI effort enum instead of the zen gateway one.
+    expect(getThinkingLevels("opencode", "gpt-5.6-sol")).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"]);
   });
 
   it("other providers unaffected", () => {

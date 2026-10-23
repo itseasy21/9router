@@ -2,10 +2,15 @@
 import { FORMATS } from "../translator/formats.js";
 import { formatSSE } from "./streamHelpers.js";
 
-// Responses API events that signal the stream has reached a terminal state
+// Responses API events that signal the stream has reached a terminal state.
+// `response.incomplete` is terminal too (content_filter / max_output_tokens): the
+// response stops there and no response.completed follows, so leaving it out made
+// the translate path append a synthetic response.failed and combo fall-through
+// retried a content-filtered answer.
 const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
   "response.completed",
   "response.done",
+  "response.incomplete",
   "response.failed",
   "error"
 ]);
@@ -20,7 +25,7 @@ export function isOpenAIResponsesTerminalEvent(eventName, chunk) {
   const type = getOpenAIResponsesEventName(eventName, chunk);
   if (OPENAI_RESPONSES_TERMINAL_EVENTS.has(type)) return true;
   const status = chunk?.response?.status;
-  return status === "completed" || status === "failed";
+  return status === "completed" || status === "incomplete" || status === "failed";
 }
 
 const sharedEncoder = new TextEncoder();

@@ -14,9 +14,10 @@ export default {
   noAuth: true,
   transport: {
     baseUrl: "https://opencode.ai",
-    // Single OpenAI-compatible gateway for every model (claude/gpt/gemini/... ids
-    // included) → one reasoning_effort enum; overrides per-model caps format.
-    thinkingFormat: "opencode",
+    // Per-model caps own the reasoning shape: Zen originals declare the gateway
+    // enum ("opencode"), while the OpenRouter-backed free lane (glm-5.3-flash-free,
+    // deepseek-v4.1-flash-free, mimo-v2.6-flash-free) takes the full OpenAI enum.
+    // A transport-level override here would collapse them all onto one enum.
     headers: {
       "x-opencode-client": "desktop",
     },
@@ -31,6 +32,11 @@ export default {
     },
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+      // The free lane's MiMo route (OpenRouter-backed) streams thinking as
+      // `reasoning` + `reasoning_details[]`, not reasoning_content. stream.js lifts
+      // the alias into reasoning_content for OpenAI-shaped clients; every other
+      // model on the lane already emits reasoning_content, so the lift is a no-op.
+      reasoningAliasFields: true,
     },
   },
   models: [
