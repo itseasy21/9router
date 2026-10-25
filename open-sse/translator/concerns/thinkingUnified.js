@@ -459,18 +459,6 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       if (out !== null && out !== undefined) body.think = out;
       break;
     }
-    case "opencode": {
-      // opencode zen gateway enum on OpenAI-style reasoning_effort:
-      // none|low|medium|high|max. Verified live: xhigh/minimal/auto → 400
-      // "[1210] Invalid API parameter"; omitted field → upstream default.
-      if (none && canDisable) { body.reasoning_effort = "none"; break; }
-      const level = toLevel(eff);
-      if (!level || level === "auto") break;
-      body.reasoning_effort = level === "xhigh" || level === "ultra" ? "max"
-        : level === "minimal" ? "low"
-        : level;
-      break;
-    }
     case "kiro":
       // Kiro thinking handled via system-tag injection in openai-to-kiro.js; no body field here.
       break;

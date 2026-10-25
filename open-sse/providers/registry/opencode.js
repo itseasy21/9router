@@ -14,10 +14,6 @@ export default {
   noAuth: true,
   transport: {
     baseUrl: "https://opencode.ai",
-    // Per-model caps own the reasoning shape: Zen originals declare the gateway
-    // enum ("opencode"), while the OpenRouter-backed free lane (glm-5.3-flash-free,
-    // deepseek-v4.1-flash-free, mimo-v2.6-flash-free) takes the full OpenAI enum.
-    // A transport-level override here would collapse them all onto one enum.
     headers: {
       "x-opencode-client": "desktop",
     },

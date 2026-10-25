@@ -208,9 +208,7 @@ export const MODEL_CAPABILITIES = {
   // Modalities and limits below are taken verbatim from models.dev.
   "space-bunny-free":  { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
   "space-bunny":       { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
-  // Zen originals below resolve to the gateway enum (none|low|medium|high|max):
-  // xhigh/minimal/auto are 400 [1210] on these lanes (probed live).
-  "big-pickle":        { reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+  "big-pickle":        { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 },
   "exo-free":          { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   "fledge-alpha-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   "longcat-2.0":             { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
@@ -218,10 +216,9 @@ export const MODEL_CAPABILITIES = {
   "longcat-2.5-preview-free":{ vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "north-mini-code-free":    { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
   "ring-2.6-1t-free":        { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 66000 },
-  "x-preview-f-free":        { vision: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1000000, maxOutput: 131072 },
+  "x-preview-f-free":        { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   // muse-spark-1.2 rides /zen/v1/responses and takes the OpenAI effort enum there.
   "muse-spark-1.2":          { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
-  "mimo-v2.5-free":          { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
 };
 
 // Kiro's GPT-5.6 tiers now run the full 1M API window (no longer 272k-truncated).

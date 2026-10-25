@@ -27,7 +27,6 @@ const FORMAT_LEVELS = {
   zai: L.onOff,
   qwen: L.base,
   kimi: L.levelMax,
-  opencode: L.levelMax,   // zen gateway enum: none|low|medium|high|max (no xhigh/minimal)
   deepseek: L.hiMax,
   commandcode: ["none", "low", "medium", "high", "xhigh", "max"],
   minimax: L.onOff,
@@ -56,10 +55,6 @@ const PATTERN_THINKING = [
   { provider: "agentrouter", pattern: "gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh"] },
   // gpt-6-astra rides /v1/responses (reasoning.effort, no disable) — GPT-6.x enum.
   { provider: "agentrouter", pattern: "gpt-6-astra*", levels: CODEX_GPT_5_6_LEVELS },
-  // opencode Muse models route to /zen/v1/responses (reasoning.effort) which
-  // expects the standard OpenAI enum none|minimal|low|medium|high|xhigh —
-  // the zen gateway's none|low|medium|high|max is rejected with 400 max→xhigh.
-  { provider: "opencode", pattern: "*muse*", levels: L.openai },
   { provider: "codex", pattern: "*gpt-6*", levels: CODEX_GPT_5_6_LEVELS },
   { provider: "codex", pattern: "*gpt-5.6-sol*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-terra*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },

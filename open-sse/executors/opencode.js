@@ -74,14 +74,6 @@ export function translateSessionId(sessionId, clientTool = "") {
   if (typeof sessionId === "string" && OPENCODE_SESSION_RE.test(sessionId.trim())) {
     return sessionId.trim();
   }
-  const cacheKey = `opencode:tr:${clientTool || "generic"}:${sessionId || ""}`;
-  const existing = stableOpencodeSessions.get(cacheKey);
-  if (existing) {
-    existing.lastUsed = Date.now();
-    stableOpencodeSessions.delete(cacheKey);
-    stableOpencodeSessions.set(cacheKey, existing);
-    return existing.sessionId;
-  }
   const digest = crypto
     .createHash("sha256")
     .update(`opencode\0${clientTool || "generic"}\0${sessionId || ""}`)
@@ -93,12 +85,7 @@ export function translateSessionId(sessionId, clientTool = "") {
   for (let i = 6; i < 20; i++) {
     randomPart += BASE62_CHARS[digest[i] % 62];
   }
-  const id = `ses_${timeHex}${randomPart}`;
-  if (stableOpencodeSessions.size >= MAX_STABLE_SESSIONS) {
-    stableOpencodeSessions.delete(stableOpencodeSessions.keys().next().value);
-  }
-  stableOpencodeSessions.set(cacheKey, { sessionId: id, lastUsed: Date.now() });
-  return id;
+  return `ses_${timeHex}${randomPart}`;
 }
 
 function normalizeSession(value) {
@@ -262,7 +249,7 @@ function normalizeResponsesTools(body) {
     if (parameters.type === "object" && !parameters.properties) parameters = { ...parameters, properties: {} };
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
-    tool.name = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, MAX_TOOL_NAME_LEN);
+    tool.name = name.slice(0, MAX_TOOL_NAME_LEN);
     if (description) tool.description = description;
     tool.parameters = parameters;
     validNames.add(tool.name);
@@ -295,7 +282,7 @@ function sanitizeResponsesItems(body) {
     delete item.reasoning_encrypted_content;
     if (item.type === "function_call") {
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") return false;
-      item.name = item.name.trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, MAX_TOOL_NAME_LEN);
+      item.name = item.name.trim().slice(0, MAX_TOOL_NAME_LEN);
       item.call_id = clampResponsesCallId(item.call_id);
       item.arguments = coerceResponsesArguments(item.arguments);
       return true;
@@ -307,19 +294,6 @@ function sanitizeResponsesItems(body) {
     }
     return true;
   });
-  // Pair function_call and function_call_output so compacted/interrupted turns do not 400 upstream
-  const callIds = new Set(body.input.filter((x) => x?.type === "function_call").map((x) => x.call_id));
-  body.input = body.input.filter((x) => x?.type !== "function_call_output" || callIds.has(x.call_id));
-  const outputIds = new Set(body.input.filter((x) => x?.type === "function_call_output").map((x) => x.call_id));
-  const paired = [];
-  for (const item of body.input) {
-    paired.push(item);
-    if (item?.type === "function_call" && !outputIds.has(item.call_id)) {
-      paired.push({ type: "function_call_output", call_id: item.call_id, output: "{}" });
-      outputIds.add(item.call_id);
-    }
-  }
-  body.input = paired;
 }
 
 function normalizeOpencodeReasoning(model, body) {
@@ -392,9 +366,6 @@ export class OpenCodeExecutor extends BaseExecutor {
         if (body.max_completion_tokens !== undefined) body.max_output_tokens = body.max_completion_tokens;
         else if (body.max_tokens !== undefined) body.max_output_tokens = body.max_tokens;
       }
-      // Responses API floor: max_output_tokens must be >= 16 (400 invalid_request_error
-      // otherwise — e.g. Claude Code's topic-detection ping sends max_tokens:1).
-      if (typeof body.max_output_tokens === "number" && body.max_output_tokens < 16) body.max_output_tokens = 16;
       delete body.max_tokens;
       delete body.max_completion_tokens;
       normalizeOpencodeReasoning(model, body);
