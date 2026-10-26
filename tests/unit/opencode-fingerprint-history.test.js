@@ -2,9 +2,11 @@
 //
 // v2 replaced the old quartet case-canonicalization with tool aliasing:
 // a caller tool whose name exactly collides with a fingerprint tool (read/
-// shell) under a different definition is aliased (read -> read_client) and
-// its PRIOR-TURN calls in history are renamed via aliasHistoryToolCalls so
-// the model never reads its own earlier calls as calls to OpenCode's tool.
+// shell) and whose arguments cannot carry OpenCode's definition is aliased
+// (read -> read_client) and its PRIOR-TURN calls in history are renamed via
+// aliasHistoryToolCalls so the model never reads its own earlier calls as
+// calls to OpenCode's tool. A compatible definition is normalized in place
+// and keeps its name, so there is no alias to restore.
 // Case variants (Bash/Read) are respected as separate tools and pass
 // through untouched; upstream accepts them next to read/shell.
 import { describe, expect, it } from "vitest";
@@ -15,13 +17,15 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import "../translator/registerAll.js";
 
+// `encoding` is not a fingerprint argument, so this definition cannot be swapped
+// for OpenCode's in place and must travel under `read_client`.
 const CLIENT_READ_DEF = {
   description: "Client's own read tool",
-  parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+  parameters: { type: "object", properties: { path: { type: "string" }, encoding: { type: "string" } }, required: ["path"] },
 };
 const CLIENT_READ_SCHEMA = {
   type: "object",
-  properties: { path: { type: "string" } },
+  properties: { path: { type: "string" }, encoding: { type: "string" } },
   required: ["path"],
 };
 

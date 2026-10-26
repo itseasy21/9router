@@ -841,7 +841,6 @@
   },
   "opencode": {
     "baseUrl": "https://opencode.ai",
-    "thinkingFormat": "opencode",
     "headers": {
       "x-opencode-client": "desktop"
     },
@@ -1317,5 +1316,10 @@
   "modal": {
     "format": "openai",
     "thinkingFormat": "modal"
+  },
+  "runcrate": {
+    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
+    "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
+    "format": "openai"
   }
 }

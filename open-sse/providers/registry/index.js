@@ -148,6 +148,7 @@ import p151 from "./uc-web.js";
 // custom-v: providers added on this branch
 import p152 from "./agentrouter.js";
 import p153 from "./modal.js";
+import p154 from "./runcrate.js";
 export default [
   p0,
   p1,
@@ -295,4 +296,5 @@ export default [
   p151,
   p152,
   p153,
+  p154,
 ];
