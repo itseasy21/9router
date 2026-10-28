@@ -63,12 +63,20 @@ describe("github claude-adaptive wire shape", () => {
     expect(out.output_config).toEqual({ effort: "high" });
   });
 
-  it("opus-5.5 and sonnet-5-thinking variants also get adaptive", () => {
-    for (const m of ["claude-opus-5.5", "claude-sonnet-5-thinking", "github/claude-sonnet-5.5"]) {
+  it("sonnet-5-thinking variants also get adaptive", () => {
+    for (const m of ["claude-sonnet-5-thinking", "github/claude-sonnet-5.5"]) {
       const out = apply(m.replace("github/", ""), { reasoning_effort: "high" });
       expect(out.thinking).toEqual({ type: "adaptive" });
       expect(out.output_config).toEqual({ effort: "high" });
     }
+  });
+
+  it("opus-5.5 is adaptive-only upstream (no thinking switch, effort still sent)", () => {
+    // Upstream live probe: Opus 5.5 rejects thinking.type "disabled" with 400, so
+    // the row carries thinkingCanDisable:false and the wire shape is effort-only.
+    const out = apply("claude-opus-5.5", { reasoning_effort: "high" });
+    expect(out.thinking).toBeUndefined();
+    expect(out.output_config).toEqual({ effort: "high" });
   });
 });
 

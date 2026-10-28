@@ -149,6 +149,7 @@ import p151 from "./uc-web.js";
 import p152 from "./agentrouter.js";
 import p153 from "./modal.js";
 import p154 from "./runcrate.js";
+import p155 from "./nace.js";
 export default [
   p0,
   p1,
@@ -297,4 +298,5 @@ export default [
   p152,
   p153,
   p154,
+  p155,
 ];
