@@ -1,4 +1,5 @@
 import { DefaultExecutor } from "./default.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
 
 // AgentRouter routes each model by its id prefix (mirrored by the
 // getModelTargetFormat family fallback in providerModels.js):
@@ -9,6 +10,92 @@ import { DefaultExecutor } from "./default.js";
 //   others   → /v1/chat/completions — plain OpenAI-compatible fallback lane.
 const RESPONSES_BASE_URL = "https://agentrouter.org/v1/responses";
 const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
+
+// AgentRouter pools upstream capacity, so a model's token budget can be spent at
+// any moment. When that happens the gateway answers HTTP 200 and reports the
+// failure inside the body — an `error` / `response.failed` frame whose message
+// reads:
+//   "Your requests to gpt-6-astra for gpt-6-astra in eastus2 have exceeded token rate limit."
+// HTTP 200 is already committed by then, so BaseExecutor's status-based retry
+// never fires: the frame is translated into an ordinary assistant text chunk
+// ("[Error] ..."), the combo records a 0-token "success", and the client gets
+// the failure as the model's answer. Peek the head of the body instead and retry
+// the request itself with exponential backoff, so a momentary budget exhaustion
+// recovers rather than failing the turn. Once retries are spent, answer a real
+// 429 so account/backoff handling and combo fallthrough work as usual.
+const RATE_LIMIT_TEXT = /exceeded\s+token\s+rate\s+limit/i;
+
+// Peeking buffers the head of the body. A payload delta proves the turn is
+// generating output, so the peek stops and replays everything it read; the
+// markers are chosen so SSE control frames (response.created, message_start,
+// response.in_progress) never count as output on their own.
+const CONTENT_MARKERS = [
+  "response.output_text.delta",
+  "response.reasoning_summary_text.delta",
+  "response.function_call_arguments.delta",
+  "content_block_delta",
+];
+
+const PEEK_BYTES = 64 * 1024;
+
+/** Retries after the first attempt (1 initial call + 3 retries) */
+export const AGENTROUTER_RATE_LIMIT_MAX_RETRIES = 3;
+/** First backoff step; each retry doubles it (2s → 4s → 8s) */
+export const AGENTROUTER_RATE_LIMIT_BACKOFF_BASE_MS = 2000;
+
+/**
+ * Exponential backoff delay for retry `attempt` (0-based): 2s, 4s, 8s.
+ * @param {number} attempt
+ * @returns {number} delay in ms
+ */
+export function agentRouterBackoffDelay(attempt) {
+  return AGENTROUTER_RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempt));
+}
+
+/** Index of the earliest payload delta in `text`, or -1 when none was seen. */
+function firstContentIndex(text) {
+  let first = -1;
+  for (const marker of CONTENT_MARKERS) {
+    const idx = text.indexOf(marker);
+    if (idx !== -1 && (first === -1 || idx < first)) first = idx;
+  }
+  return first;
+}
+
+/**
+ * Pull the upstream message out of the buffered head. Prefers the parsed
+ * `error.message` of an SSE/JSON frame; falls back to the sentence carrying the
+ * marker so a plain-text body still yields something readable.
+ */
+function extractRateLimitMessage(text) {
+  for (const line of text.split(/\r?\n/)) {
+    const payload = line.startsWith("data:") ? line.slice(5).trim() : null;
+    if (!payload || !payload.startsWith("{")) continue;
+    try {
+      const json = JSON.parse(payload);
+      const message = json?.error?.message || json?.response?.error?.message || json?.message;
+      if (typeof message === "string" && RATE_LIMIT_TEXT.test(message)) return message;
+    } catch {
+      // Partial frame — the fallback below still finds the sentence.
+    }
+  }
+  const match = text.match(/([^\n]*?exceeded\s+token\s+rate\s+limit[^\n]*)/i);
+  return match ? match[1].replace(/^data:\s*/, "").replace(/[\\"]+$/, "").trim() : null;
+}
+
+/** Synthetic 429 so chatCore/account fallback see a real rate limit. */
+function rateLimitResponse(message) {
+  return new Response(
+    JSON.stringify({
+      error: {
+        message: `[agentrouter] ${message}`,
+        type: "rate_limit_error",
+        code: "rate_limit_exceeded",
+      },
+    }),
+    { status: HTTP_STATUS.RATE_LIMITED, headers: { "Content-Type": "application/json" } }
+  );
+}
 
 // Strip the thinking suffix "model(level)" so checks hit the base id.
 function baseModelId(model) {
@@ -36,6 +123,124 @@ export class AgentRouterExecutor extends DefaultExecutor {
     // claude-* keep the registry default /messages?beta=true wire.
     if (isChatCompletionsModel(model)) return CHAT_COMPLETIONS_BASE_URL;
     return super.buildUrl(model, stream, urlIndex, credentials);
+  }
+
+  /**
+   * Retry a request whose HTTP 200 body is actually the upstream token rate
+   * limit. Backoff is exponential (2s/4s/8s) and bounded at
+   * AGENTROUTER_RATE_LIMIT_MAX_RETRIES; after that the turn reports a 429 so the
+   * combo moves on and the account takes its normal rate-limit cooldown.
+   */
+  async execute(args) {
+    const { log } = args;
+    for (let attempt = 0; ; attempt++) {
+      const result = await super.execute(args);
+      const peek = await this.peekRateLimitError(result.response);
+      if (!peek.matched) {
+        // Healthy body: hand back a stream that replays the peeked head.
+        if (peek.replacementBody) {
+          result.response = new Response(peek.replacementBody, {
+            status: result.response.status,
+            statusText: result.response.statusText,
+            headers: result.response.headers,
+          });
+        }
+        return result;
+      }
+
+      if (attempt >= AGENTROUTER_RATE_LIMIT_MAX_RETRIES) {
+        const message = peek.message || "token rate limit exceeded";
+        log?.warn?.("RETRY", `AGENTROUTER | ${args.model} ${message} — retries exhausted (${attempt}/${AGENTROUTER_RATE_LIMIT_MAX_RETRIES})`);
+        result.response = rateLimitResponse(message);
+        return result;
+      }
+
+      const delayMs = agentRouterBackoffDelay(attempt);
+      log?.debug?.("RETRY", `AGENTROUTER | ${args.model} token rate limit — retry ${attempt + 1}/${AGENTROUTER_RATE_LIMIT_MAX_RETRIES} after ${delayMs / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  /**
+   * Buffer the head of the body looking for the AgentRouter token-rate-limit
+   * error. Returns `{ matched, message, replacementBody }`; when nothing matched
+   * the caller MUST use `replacementBody` (the original body was already read).
+   * Never throws — a peek failure degrades to "no match".
+   */
+  async peekRateLimitError(response) {
+    const empty = { matched: false, message: null, replacementBody: null };
+    if (!response || !response.ok || !response.body) return empty;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const chunks = [];
+    let text = "";
+    let message = null;
+
+    try {
+      while (text.length < PEEK_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        text += decoder.decode(value, { stream: true });
+        const errorIndex = text.search(RATE_LIMIT_TEXT);
+        const contentIndex = firstContentIndex(text);
+        // Real output already started before the marker — this is response text,
+        // not a gateway error frame, so stop peeking and let it through.
+        if (contentIndex !== -1 && (errorIndex === -1 || contentIndex < errorIndex)) break;
+        if (errorIndex !== -1) {
+          message = extractRateLimitMessage(text) || "token rate limit exceeded";
+          break;
+        }
+      }
+    } catch {
+      // Fail open: replay whatever was read and let the stream layer decide.
+    }
+
+    if (message) {
+      try { await reader.cancel(); } catch { /* already closed */ }
+      try { reader.releaseLock(); } catch { /* noop */ }
+      return { matched: true, message, replacementBody: null };
+    }
+
+    reader.releaseLock();
+
+    const upstream = response.body;
+    let upstreamReader = null;
+    const replacementBody = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        upstreamReader = upstream.getReader();
+      },
+      async pull(controller) {
+        try {
+          const { done, value } = await upstreamReader.read();
+          if (done) { controller.close(); return; }
+          controller.enqueue(value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        try { upstreamReader?.cancel(reason); } catch { /* noop */ }
+      },
+    });
+
+    return { matched: false, message: null, replacementBody };
+  }
+
+  // Surface the synthetic 429's message instead of the raw JSON envelope.
+  parseError(response, bodyText) {
+    if (response.status === HTTP_STATUS.RATE_LIMITED && bodyText) {
+      try {
+        const json = JSON.parse(bodyText);
+        const message = json?.error?.message || json?.message;
+        if (typeof message === "string" && message) return { status: response.status, message };
+      } catch {
+        // Plain-text body — fall through to the default parser.
+      }
+    }
+    return super.parseError(response, bodyText);
   }
 
   transformRequest(model, body, stream, credentials) {

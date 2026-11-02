@@ -7,6 +7,7 @@
 - **Codex**: add `gpt-6.1-terra` (responses-lite lane, GPT-6-Lite thinking levels)
 
 ## Fixes
+- **AgentRouter**: retry a spent token budget instead of failing the turn — the gateway reports `exceeded token rate limit` inside an HTTP 200 body, so peek the stream head, retry with exponential backoff (2s/4s/8s, 3 retries), and answer a real 429 once retries are exhausted so it is treated as a rate limit by account fallback and combos
 - **NVIDIA NIM**: normalize assistant `reasoning` aliases to `reasoning_content` before forwarding, avoiding NIM's duplicate-field 400 when clients send both.
 - **Lazy Runtime**: make the on-demand wreq-js/playwright-core installer work inside published builds — fetch `createRequire` at runtime instead of the bundler-stubbed static import, mark the runtime-dir `import()` calls `webpackIgnore` so file URLs are not captured as bundle chunks, anchor npm to the runtime dir with a minimal `package.json`, and wipe + reinstall once when npm exits 0 on a partially-extracted package (#5245)
 - **Docker**: bake `wreq-js` and `playwright-core` into the runner image's `node_modules` (builder-stage isolated install) so OpenCode Free resolves without runtime downloads (#5245)
