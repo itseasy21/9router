@@ -25,16 +25,20 @@ const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
 // 429 so account/backoff handling and combo fallthrough work as usual.
 const RATE_LIMIT_TEXT = /exceeded\s+token\s+rate\s+limit/i;
 
-// Peeking buffers the head of the body. A payload delta proves the turn is
-// generating output, so the peek stops and replays everything it read; the
-// markers are chosen so SSE control frames (response.created, message_start,
-// response.in_progress) never count as output on their own.
-const CONTENT_MARKERS = [
+// Peeking buffers the head of the body. A *non-empty* payload delta proves the
+// turn is generating output, so the peek stops and replays everything it read;
+// SSE control frames (response.created, message_start, response.in_progress)
+// never count as output on their own. Frames are parsed, not substring-matched:
+// the relay also emits `response.output_text.delta` with an empty `delta` as a
+// keep-alive, and treating that as real output let a rate-limit frame later in
+// the same body slip through unretried.
+const CONTENT_EVENTS = new Set([
   "response.output_text.delta",
   "response.reasoning_summary_text.delta",
   "response.function_call_arguments.delta",
+  "response.custom_tool_call_input.delta",
   "content_block_delta",
-];
+]);
 
 const PEEK_BYTES = 64 * 1024;
 
@@ -52,12 +56,30 @@ export function agentRouterBackoffDelay(attempt) {
   return AGENTROUTER_RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempt));
 }
 
-/** Index of the earliest payload delta in `text`, or -1 when none was seen. */
-function firstContentIndex(text) {
+/** True when a parsed SSE frame carries non-empty model output. */
+function frameHasOutput(json) {
+  if (!json || typeof json !== "object" || !CONTENT_EVENTS.has(json.type)) return false;
+  if (json.type === "content_block_delta") {
+    const delta = json.delta || {};
+    return Boolean(delta.text || delta.thinking || delta.partial_json);
+  }
+  return typeof json.delta === "string" && json.delta.length > 0;
+}
+
+/** Index of the earliest non-empty output frame in `text`, or -1 when none was seen. */
+function firstOutputIndex(text) {
   let first = -1;
-  for (const marker of CONTENT_MARKERS) {
-    const idx = text.indexOf(marker);
-    if (idx !== -1 && (first === -1 || idx < first)) first = idx;
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    const lineStart = offset;
+    offset += line.length + 1;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    try {
+      if (frameHasOutput(JSON.parse(trimmed.slice(5).trim())) && first === -1) first = lineStart;
+    } catch {
+      // Partial frame — re-scanned from the full text on the next read.
+    }
   }
   return first;
 }
@@ -73,7 +95,10 @@ function extractRateLimitMessage(text) {
     if (!payload || !payload.startsWith("{")) continue;
     try {
       const json = JSON.parse(payload);
-      const message = json?.error?.message || json?.response?.error?.message || json?.message;
+      const message = json?.error?.message
+        || (typeof json?.error === "string" ? json.error : null)
+        || json?.response?.error?.message
+        || json?.message;
       if (typeof message === "string" && RATE_LIMIT_TEXT.test(message)) return message;
     } catch {
       // Partial frame — the fallback below still finds the sentence.
@@ -138,6 +163,9 @@ export class AgentRouterExecutor extends DefaultExecutor {
       const peek = await this.peekRateLimitError(result.response);
       if (!peek.matched) {
         // Healthy body: hand back a stream that replays the peeked head.
+        if (attempt > 0) {
+          log?.info?.("RETRY", `AGENTROUTER | ${args.model} recovered on attempt ${attempt + 1}`);
+        }
         if (peek.replacementBody) {
           result.response = new Response(peek.replacementBody, {
             status: result.response.status,
@@ -156,7 +184,9 @@ export class AgentRouterExecutor extends DefaultExecutor {
       }
 
       const delayMs = agentRouterBackoffDelay(attempt);
-      log?.debug?.("RETRY", `AGENTROUTER | ${args.model} token rate limit — retry ${attempt + 1}/${AGENTROUTER_RATE_LIMIT_MAX_RETRIES} after ${delayMs / 1000}s`);
+      // info, not debug: the retry is the difference between a failed turn and a
+      // recovered one, and production logs (incl. containers) only show info+.
+      log?.info?.("RETRY", `AGENTROUTER | ${args.model} token rate limit — retry ${attempt + 1}/${AGENTROUTER_RATE_LIMIT_MAX_RETRIES} after ${delayMs / 1000}s`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -184,7 +214,7 @@ export class AgentRouterExecutor extends DefaultExecutor {
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
         const errorIndex = text.search(RATE_LIMIT_TEXT);
-        const contentIndex = firstContentIndex(text);
+        const contentIndex = firstOutputIndex(text);
         // Real output already started before the marker — this is response text,
         // not a gateway error frame, so stop peeking and let it through.
         if (contentIndex !== -1 && (errorIndex === -1 || contentIndex < errorIndex)) break;

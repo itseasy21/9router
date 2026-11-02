@@ -3,11 +3,12 @@
 ## Features
 - **MiniMax Code**: add lease auth mode that rides the desktop app's sign-in through a named-pipe/unix-socket broker (length-prefixed JSON protocol, broker-owned token refresh — no refresh token held locally since MiniMax tokens are single-use), with a dashboard lease button and usage attribution
 - **Nace Drex**: add the `nace` provider to the System One lane with `drex`, `drex-v2.0` and `drex-max`
+- **Dashboard**: show the short build commit next to the version in the sidebar (`v0.5.112 · 1e3a9628`), resolved from git at build time with a `NEXT_PUBLIC_GIT_COMMIT`/`GIT_COMMIT` fallback for container builds, plus a `GIT_COMMIT` build arg wired through the Dockerfile and publish workflow; `/api/version` now reports the same commit so a remote deployment can be checked with one curl
 - **CommandCode**: align request headers with the official CLI 1.88.0 through a shared `commandCodeHeaders` service
 - **Codex**: add `gpt-6.1-terra` (responses-lite lane, GPT-6-Lite thinking levels)
 
 ## Fixes
-- **AgentRouter**: retry a spent token budget instead of failing the turn — the gateway reports `exceeded token rate limit` inside an HTTP 200 body, so peek the stream head, retry with exponential backoff (2s/4s/8s, 3 retries), and answer a real 429 once retries are exhausted so it is treated as a rate limit by account fallback and combos
+- **AgentRouter**: retry a spent token budget instead of failing the turn — the gateway reports `exceeded token rate limit` inside an HTTP 200 body, so peek the stream head, retry with exponential backoff (2s/4s/8s, 3 retries), and answer a real 429 once retries are exhausted so it is treated as a rate limit by account fallback and combos. Parse the peeked frames by payload so keep-alive `response.output_text.delta` frames with an empty `delta` no longer end the peek before the error arrives
 - **NVIDIA NIM**: normalize assistant `reasoning` aliases to `reasoning_content` before forwarding, avoiding NIM's duplicate-field 400 when clients send both.
 - **Lazy Runtime**: make the on-demand wreq-js/playwright-core installer work inside published builds — fetch `createRequire` at runtime instead of the bundler-stubbed static import, mark the runtime-dir `import()` calls `webpackIgnore` so file URLs are not captured as bundle chunks, anchor npm to the runtime dir with a minimal `package.json`, and wipe + reinstall once when npm exits 0 on a partially-extracted package (#5245)
 - **Docker**: bake `wreq-js` and `playwright-core` into the runner image's `node_modules` (builder-stage isolated install) so OpenCode Free resolves without runtime downloads (#5245)

@@ -107,6 +107,32 @@ describe("AgentRouterExecutor.execute — in-body token rate limit", () => {
     await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
   });
 
+  // The relay emits empty `response.output_text.delta` frames as keep-alives.
+  // They carry no answer, so the peek must keep reading and still see the error.
+  it("retries when an empty delta keep-alive precedes the error frame", async () => {
+    const body = [
+      `event: response.created`,
+      `data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`,
+      "",
+      `event: response.output_text.delta`,
+      `data: {"type":"response.output_text.delta","delta":""}`,
+      "",
+      `event: response.failed`,
+      `data: {"type":"response.failed","response":{"status":"failed","error":{"message":"${RATE_LIMIT_MESSAGE}"}}}`,
+      "",
+    ].join("\n");
+
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(sse(body)).mockResolvedValueOnce(sse(HEALTHY_BODY));
+    const pending = makeExecutor().execute(args);
+    await vi.advanceTimersByTimeAsync(agentRouterBackoffDelay(0));
+    const out = await pending;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(out.response.status).toBe(200);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  });
+
   it("does not retry when the marker arrives inside real output", async () => {
     const body = [
       `event: response.created`,

@@ -5,6 +5,8 @@ export const APP_CONFIG = {
   name: "9Router Proxy",
   description: "AI Infrastructure Management",
   version: pkg.version,
+  // Short build commit (injected by next.config.mjs); empty when unknown.
+  commit: process.env.NEXT_PUBLIC_GIT_COMMIT || "",
 };
 
 // GitHub configuration

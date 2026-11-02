@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 // CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).
@@ -8,6 +9,25 @@ const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
   ? join(projectRoot, "..")
   : projectRoot;
 const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE || "128mb";
+
+// Short commit of the build, shown next to the version in the dashboard. Read at
+// build time (git may be absent in a Docker build, hence the env fallback and the
+// empty-string last resort — the badge simply hides when unknown).
+function resolveBuildCommit() {
+  const fromEnv = process.env.NEXT_PUBLIC_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_COMMIT;
+  const normalized = String(fromEnv || "").trim();
+  // "unknown" is the CI/Docker placeholder — treat it as absent, not a hash.
+  if (normalized && normalized !== "unknown" && normalized !== "local") return normalized.slice(0, 7);
+  try {
+    return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+      cwd: projectRoot,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString().trim();
+  } catch {
+    return "";
+  }
+}
+const buildCommit = resolveBuildCommit();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -36,7 +56,9 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
-  env: {},
+  env: {
+    NEXT_PUBLIC_GIT_COMMIT: buildCommit,
+  },
   experimental: {
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,

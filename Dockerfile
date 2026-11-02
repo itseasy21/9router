@@ -3,6 +3,9 @@ ARG NODE_IMAGE=node:22.23.4-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG APP_VERSION=unknown
+# Short commit baked into the dashboard badge and /api/version. Empty/unknown
+# hides the badge (git is not part of the Docker build context).
+ARG GIT_COMMIT=
 
 FROM ${NODE_IMAGE} AS base
 ARG ALPINE_MIRROR
@@ -16,6 +19,7 @@ RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
 
 FROM base AS builder
 ARG NPM_REGISTRY
+ARG GIT_COMMIT
 
 RUN apk add --no-cache python3 make g++ linux-headers
 
@@ -30,6 +34,7 @@ RUN --mount=type=cache,target=/root/.npm \
       --fetch-timeout=300000
 
 COPY . ./
+ENV NEXT_PUBLIC_GIT_COMMIT=${GIT_COMMIT}
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

@@ -128,7 +128,17 @@ export default function Sidebar({ onClose }) {
               <h1 className="text-lg font-semibold tracking-tight text-text-main">
                 {APP_CONFIG.name}
               </h1>
-              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                <span>v{APP_CONFIG.version}</span>
+                {APP_CONFIG.commit && (
+                  <span
+                    className="font-mono opacity-70"
+                    title={`Build commit ${APP_CONFIG.commit}`}
+                  >
+                    · {APP_CONFIG.commit}
+                  </span>
+                )}
+              </span>
             </div>
           </Link>
           {updateInfo && (
