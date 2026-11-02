@@ -29,9 +29,10 @@ const RATE_LIMIT_TEXT = /exceeded\s+token\s+rate\s+limit/i;
 // or tool arguments) proves the turn is generating, so only that stops the peek
 // and replays what it read; SSE control frames (response.created, message_start,
 // response.in_progress) never count as output on their own. Frames are parsed,
-// not substring-matched: the relay also emits `response.output_text.delta` with
-// an empty `delta` as a keep-alive, and treating that as real output let a
-// rate-limit frame later in the same body slip through unretried.
+// not substring-matched: the relay emits `response.output_text.delta` keep-alives
+// whose `delta` is empty *or whitespace* ("\n"), and counting either as real
+// output let a rate-limit frame a couple hundred milliseconds later in the same
+// body slip through unretried — the client then saw `[Error] …` as the answer.
 const ANSWER_EVENT_TYPES = new Set([
   "response.output_text.delta",
   "response.function_call_arguments.delta",
@@ -73,10 +74,29 @@ function isAnswerFrame(json) {
   if (!json || typeof json !== "object") return false;
   if (json.type === "content_block_delta") {
     const delta = json.delta || {};
-    return Boolean(delta.text || delta.partial_json);
+    const text = typeof delta.text === "string" ? delta.text : "";
+    const args = typeof delta.partial_json === "string" ? delta.partial_json : "";
+    return text.trim().length > 0 || args.trim().length > 0;
   }
   if (!ANSWER_EVENT_TYPES.has(json.type)) return false;
-  return typeof json.delta === "string" && json.delta.length > 0;
+  // Whitespace-only deltas are keep-alives, not the start of an answer.
+  return typeof json.delta === "string" && json.delta.trim().length > 0;
+}
+
+/**
+ * Message of a structured rejection frame (`error` / `response.failed`) when it
+ * carries the token-rate-limit marker. This is the authoritative signal: a
+ * gateway rejection is an error frame, so it wins over any answer text that
+ * happened to land in the same read — nothing has been forwarded to the client
+ * yet, so the request can still be retried instead of delivering a broken turn.
+ */
+function errorFrameMessage(json) {
+  if (!json || typeof json !== "object") return null;
+  const err = json.error ?? json.response?.error;
+  const message = typeof err === "string" ? err : (typeof err?.message === "string" ? err.message : null);
+  if (typeof message !== "string" || !RATE_LIMIT_TEXT.test(message)) return null;
+  if (json.type === "error" || json.type === "response.failed" || err != null) return message;
+  return null;
 }
 
 /** True when a parsed SSE frame carries thinking output. */
@@ -94,6 +114,7 @@ function isReasoningFrame(json) {
 function scanOutputFrames(text) {
   let answer = -1;
   let reasoning = -1;
+  let errorMessage = null;
   let offset = 0;
   for (const line of text.split("\n")) {
     const lineStart = offset;
@@ -104,11 +125,12 @@ function scanOutputFrames(text) {
       const json = JSON.parse(trimmed.slice(5).trim());
       if (answer === -1 && isAnswerFrame(json)) answer = lineStart;
       if (reasoning === -1 && isReasoningFrame(json)) reasoning = lineStart;
+      if (errorMessage === null) errorMessage = errorFrameMessage(json);
     } catch {
       // Partial frame — re-scanned from the full text on the next read.
     }
   }
-  return { answer, reasoning };
+  return { answer, reasoning, errorMessage };
 }
 
 /**
@@ -240,16 +262,19 @@ export class AgentRouterExecutor extends DefaultExecutor {
         if (done) break;
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
-        const errorIndex = text.search(RATE_LIMIT_TEXT);
-        const { answer, reasoning } = scanOutputFrames(text);
-        // Answer text already started before the marker — this is response text,
-        // not a gateway rejection, so stop peeking and let it through.
-        const answerStarted = answer !== -1 && (errorIndex === -1 || answer < errorIndex);
-        if (!answerStarted && errorIndex !== -1) {
-          message = extractRateLimitMessage(text) || "token rate limit exceeded";
+        const { answer, reasoning, errorMessage } = scanOutputFrames(text);
+        // A structured rejection frame is decisive, even when a token landed
+        // first: nothing reached the client yet, so retry the request.
+        if (errorMessage) {
+          message = errorMessage;
           break;
         }
         if (answer !== -1) break;
+        // Unparseable / plain-text body carrying the marker before any answer.
+        if (text.search(RATE_LIMIT_TEXT) !== -1) {
+          message = extractRateLimitMessage(text) || "token rate limit exceeded";
+          break;
+        }
         // Thinking only: keep waiting for the rejection frame within the budget.
         if (reasoning !== -1 && text.length >= REASONING_COMMIT_BYTES) break;
       }
