@@ -165,6 +165,71 @@ describe("AgentRouter executor against a real SSE upstream", () => {
     await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
   }, 20000);
 
+  it("retries when only a zero-width keep-alive delta precedes the frame", async () => {
+    scenarios.push(
+      (res) =>
+        respondSlowly(res, [
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"\u200b"}\n\n`,
+          errorFrame,
+        ]),
+      (res) => respond(res, [HEALTHY_BODY])
+    );
+
+    const out = await execute();
+
+    expect(requests).toHaveLength(2);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  }, 20000);
+
+  it("retries a rejection written as one whole assistant text delta", async () => {
+    scenarios.push(
+      (res) =>
+        respondSlowly(res, [
+          `event: response.created\ndata: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}\n\n`,
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"[Error] ${RATE_LIMIT_MESSAGE}"}\n\n`,
+        ]),
+      (res) => respond(res, [HEALTHY_BODY])
+    );
+
+    const out = await execute();
+
+    expect(requests).toHaveLength(2);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  }, 20000);
+
+  it("retries a rejection split across assistant text deltas", async () => {
+    scenarios.push(
+      (res) =>
+        respondSlowly(res, [
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"[Error] Your requests to gpt-6.1-sol for "}\n\n`,
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"gpt-6.1-sol in eastus2 have exceeded token "}\n\n`,
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"rate limit."}\n\n`,
+        ]),
+      (res) => respond(res, [HEALTHY_BODY])
+    );
+
+    const out = await execute({ model: "gpt-6.1-sol" });
+
+    expect(requests).toHaveLength(2);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  }, 20000);
+
+  it("retries a prefixed-less rejection split across assistant text deltas", async () => {
+    scenarios.push(
+      (res) =>
+        respondSlowly(res, [
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Your requests to gpt-6.1-sol for "}\n\n`,
+          `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"gpt-6.1-sol in eastus2 have exceeded token rate limit."}\n\n`,
+        ]),
+      (res) => respond(res, [HEALTHY_BODY])
+    );
+
+    const out = await execute({ model: "gpt-6.1-sol" });
+
+    expect(requests).toHaveLength(2);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  }, 20000);
+
   it("does not retry a healthy stream and replays it byte for byte", async () => {
     scenarios.push((res) => respond(res, [HEALTHY_BODY]));
 

@@ -54,6 +54,39 @@ const REASONING_EVENT_TYPES = new Set([
 
 const PEEK_BYTES = 128 * 1024;
 const REASONING_COMMIT_BYTES = 32 * 1024;
+// Stop holding a possible rejection once the visible answer is clearly an answer.
+const REJECTION_HOLD_CHARS = 4000;
+
+// Zero-width and bidi markers are invisible: a keep-alive delta carrying one
+// trims to a non-empty string, so it looked like the start of an answer and the
+// rejection that followed went through unretried. Only visible characters prove
+// a turn is actually answering.
+const INVISIBLE_CHARS = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\u180E]/g;
+
+/** Strip invisible formatting characters and surrounding whitespace. */
+function visibleText(raw) {
+  return String(raw ?? "").replace(INVISIBLE_CHARS, "").trim();
+}
+
+/** True when a string contains something the client can actually see. */
+function hasVisibleText(raw) {
+  return visibleText(raw).length > 0;
+}
+
+// The rejection can also arrive as ordinary assistant text instead of an error
+// frame. These are the only ways that sentence can begin, so a partial match is
+// held rather than committed: the relay routinely splits it over several deltas
+// ("[Error] Your requests to gpt-6.1-sol for " → "gpt-6.1-sol in eastus2 have
+// exceeded token rate limit."), and committing on the first one handed the
+// client half a rejection as if it were the model's answer.
+const REJECTION_LEADS = ["[error] your requests to", "your requests to", "[error]"];
+
+/** True while `text` is still a possible prefix (or body) of a rejection. */
+function isRejectionLead(text) {
+  const normalized = String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return REJECTION_LEADS.some((lead) => lead.startsWith(normalized) || normalized.startsWith(lead));
+}
 
 /** Retries after the first attempt (1 initial call + 3 retries) */
 export const AGENTROUTER_RATE_LIMIT_MAX_RETRIES = 3;
@@ -74,13 +107,11 @@ function isAnswerFrame(json) {
   if (!json || typeof json !== "object") return false;
   if (json.type === "content_block_delta") {
     const delta = json.delta || {};
-    const text = typeof delta.text === "string" ? delta.text : "";
-    const args = typeof delta.partial_json === "string" ? delta.partial_json : "";
-    return text.trim().length > 0 || args.trim().length > 0;
+    return hasVisibleText(delta.text) || hasVisibleText(delta.partial_json);
   }
   if (!ANSWER_EVENT_TYPES.has(json.type)) return false;
-  // Whitespace-only deltas are keep-alives, not the start of an answer.
-  return typeof json.delta === "string" && json.delta.trim().length > 0;
+  // Whitespace- and zero-width-only deltas are keep-alives, not an answer.
+  return typeof json.delta === "string" && hasVisibleText(json.delta);
 }
 
 /**
@@ -108,29 +139,44 @@ function isReasoningFrame(json) {
 }
 
 /**
- * Indexes of the earliest answer frame and the earliest thinking frame in
- * `text` (-1 each when absent).
+ * Parse the frames that have completed since `from` and report what they carry.
+ * `visible`/`thinking` are the deltas' text (the client-visible answer and the
+ * reasoning), and `next` is the offset from which the next call must scan — a
+ * trailing partial line is left unread until the rest of it arrives.
  */
-function scanOutputFrames(text) {
-  let answer = -1;
-  let reasoning = -1;
+function scanOutputFrames(text, from = 0) {
+  let answer = false;
+  let reasoning = false;
   let errorMessage = null;
-  let offset = 0;
-  for (const line of text.split("\n")) {
-    const lineStart = offset;
-    offset += line.length + 1;
+  let visible = "";
+  let thinking = "";
+
+  const lines = text.slice(from).split("\n");
+  const partial = text.endsWith("\n") ? null : lines.pop();
+  const next = text.length - (partial ? partial.length : 0);
+
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
+    let json;
     try {
-      const json = JSON.parse(trimmed.slice(5).trim());
-      if (answer === -1 && isAnswerFrame(json)) answer = lineStart;
-      if (reasoning === -1 && isReasoningFrame(json)) reasoning = lineStart;
-      if (errorMessage === null) errorMessage = errorFrameMessage(json);
+      json = JSON.parse(trimmed.slice(5).trim());
     } catch {
-      // Partial frame — re-scanned from the full text on the next read.
+      // Malformed frame — ignore it, the rest of the body may still be valid.
+      continue;
     }
+    if (json.type === "content_block_delta") {
+      if (typeof json.delta?.text === "string") visible += json.delta.text;
+      if (typeof json.delta?.thinking === "string") thinking += json.delta.thinking;
+    }
+    if (ANSWER_EVENT_TYPES.has(json.type) && typeof json.delta === "string") visible += json.delta;
+    if (REASONING_EVENT_TYPES.has(json.type) && typeof json.delta === "string") thinking += json.delta;
+    if (isAnswerFrame(json)) answer = true;
+    if (isReasoningFrame(json)) reasoning = true;
+    if (errorMessage === null) errorMessage = errorFrameMessage(json);
   }
-  return { answer, reasoning, errorMessage };
+
+  return { answer, reasoning, errorMessage, visible, thinking, next };
 }
 
 /**
@@ -255,6 +301,11 @@ export class AgentRouterExecutor extends DefaultExecutor {
     const chunks = [];
     let text = "";
     let message = null;
+    let visible = "";
+    let thinking = "";
+    let answered = false;
+    let reasoningSeen = false;
+    let scanned = 0;
 
     try {
       while (text.length < PEEK_BYTES) {
@@ -262,21 +313,43 @@ export class AgentRouterExecutor extends DefaultExecutor {
         if (done) break;
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
-        const { answer, reasoning, errorMessage } = scanOutputFrames(text);
+
+        const scan = scanOutputFrames(text, scanned);
+        scanned = scan.next;
+        visible += scan.visible;
+        thinking += scan.thinking;
+        if (scan.answer) answered = true;
+        if (scan.reasoning) reasoningSeen = true;
+
         // A structured rejection frame is decisive, even when a token landed
         // first: nothing reached the client yet, so retry the request.
-        if (errorMessage) {
-          message = errorMessage;
+        if (scan.errorMessage) {
+          message = scan.errorMessage;
           break;
         }
-        if (answer !== -1) break;
-        // Unparseable / plain-text body carrying the marker before any answer.
-        if (text.search(RATE_LIMIT_TEXT) !== -1) {
+
+        const shown = visibleText(visible);
+        // The same rejection delivered as ordinary assistant text, whole or
+        // split across deltas — checked before any answer commit. The text must
+        // *start* like the rejection: a real answer that merely quotes the
+        // sentence ("upstream said: …") stays an answer.
+        if (RATE_LIMIT_TEXT.test(shown) && isRejectionLead(shown)) {
+          message = extractRateLimitMessage(visible) || "token rate limit exceeded";
+          break;
+        }
+        // Unparseable / plain-text / JSON body carrying the marker before any answer.
+        if (RATE_LIMIT_TEXT.test(text) && (!shown || isRejectionLead(shown))) {
           message = extractRateLimitMessage(text) || "token rate limit exceeded";
           break;
         }
+
+        if (answered) {
+          // Hold while the text so far could still turn into a rejection.
+          if (!isRejectionLead(shown) || shown.length > REJECTION_HOLD_CHARS) break;
+          continue;
+        }
         // Thinking only: keep waiting for the rejection frame within the budget.
-        if (reasoning !== -1 && text.length >= REASONING_COMMIT_BYTES) break;
+        if (reasoningSeen && thinking.length >= REASONING_COMMIT_BYTES) break;
       }
     } catch {
       // Fail open: replay whatever was read and let the stream layer decide.
