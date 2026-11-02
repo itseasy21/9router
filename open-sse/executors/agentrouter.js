@@ -25,22 +25,34 @@ const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
 // 429 so account/backoff handling and combo fallthrough work as usual.
 const RATE_LIMIT_TEXT = /exceeded\s+token\s+rate\s+limit/i;
 
-// Peeking buffers the head of the body. A *non-empty* payload delta proves the
-// turn is generating output, so the peek stops and replays everything it read;
-// SSE control frames (response.created, message_start, response.in_progress)
-// never count as output on their own. Frames are parsed, not substring-matched:
-// the relay also emits `response.output_text.delta` with an empty `delta` as a
-// keep-alive, and treating that as real output let a rate-limit frame later in
-// the same body slip through unretried.
-const CONTENT_EVENTS = new Set([
+// Peeking buffers the head of the body. Only real *answer* output (visible text
+// or tool arguments) proves the turn is generating, so only that stops the peek
+// and replays what it read; SSE control frames (response.created, message_start,
+// response.in_progress) never count as output on their own. Frames are parsed,
+// not substring-matched: the relay also emits `response.output_text.delta` with
+// an empty `delta` as a keep-alive, and treating that as real output let a
+// rate-limit frame later in the same body slip through unretried.
+const ANSWER_EVENT_TYPES = new Set([
   "response.output_text.delta",
-  "response.reasoning_summary_text.delta",
   "response.function_call_arguments.delta",
   "response.custom_tool_call_input.delta",
-  "content_block_delta",
 ]);
 
-const PEEK_BYTES = 64 * 1024;
+// Thinking is not an answer. Reasoning models (gpt-6-astra with THINK:xhigh)
+// emit a reasoning-summary delta seconds before anything else, and the token
+// rate-limit frame arrives right after it — counting that as output committed
+// the body and handed the rejection to the client as `[Error] ...`. Keep
+// peeking through thinking, but give up once enough of it has accumulated that
+// the model is clearly generating, so a slow first answer token is not delayed
+// by an unbounded buffer.
+const REASONING_EVENT_TYPES = new Set([
+  "response.reasoning_summary_text.delta",
+  "response.reasoning_text.delta",
+  "response.reasoning_content.delta",
+]);
+
+const PEEK_BYTES = 128 * 1024;
+const REASONING_COMMIT_BYTES = 32 * 1024;
 
 /** Retries after the first attempt (1 initial call + 3 retries) */
 export const AGENTROUTER_RATE_LIMIT_MAX_RETRIES = 3;
@@ -56,19 +68,32 @@ export function agentRouterBackoffDelay(attempt) {
   return AGENTROUTER_RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempt));
 }
 
-/** True when a parsed SSE frame carries non-empty model output. */
-function frameHasOutput(json) {
-  if (!json || typeof json !== "object" || !CONTENT_EVENTS.has(json.type)) return false;
+/** True when a parsed SSE frame carries real answer output (text or tool args). */
+function isAnswerFrame(json) {
+  if (!json || typeof json !== "object") return false;
   if (json.type === "content_block_delta") {
     const delta = json.delta || {};
-    return Boolean(delta.text || delta.thinking || delta.partial_json);
+    return Boolean(delta.text || delta.partial_json);
   }
+  if (!ANSWER_EVENT_TYPES.has(json.type)) return false;
   return typeof json.delta === "string" && json.delta.length > 0;
 }
 
-/** Index of the earliest non-empty output frame in `text`, or -1 when none was seen. */
-function firstOutputIndex(text) {
-  let first = -1;
+/** True when a parsed SSE frame carries thinking output. */
+function isReasoningFrame(json) {
+  if (!json || typeof json !== "object") return false;
+  if (json.type === "content_block_delta") return Boolean(json.delta?.thinking);
+  if (!REASONING_EVENT_TYPES.has(json.type)) return false;
+  return typeof json.delta === "string" && json.delta.length > 0;
+}
+
+/**
+ * Indexes of the earliest answer frame and the earliest thinking frame in
+ * `text` (-1 each when absent).
+ */
+function scanOutputFrames(text) {
+  let answer = -1;
+  let reasoning = -1;
   let offset = 0;
   for (const line of text.split("\n")) {
     const lineStart = offset;
@@ -76,12 +101,14 @@ function firstOutputIndex(text) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
     try {
-      if (frameHasOutput(JSON.parse(trimmed.slice(5).trim())) && first === -1) first = lineStart;
+      const json = JSON.parse(trimmed.slice(5).trim());
+      if (answer === -1 && isAnswerFrame(json)) answer = lineStart;
+      if (reasoning === -1 && isReasoningFrame(json)) reasoning = lineStart;
     } catch {
       // Partial frame — re-scanned from the full text on the next read.
     }
   }
-  return first;
+  return { answer, reasoning };
 }
 
 /**
@@ -214,14 +241,17 @@ export class AgentRouterExecutor extends DefaultExecutor {
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
         const errorIndex = text.search(RATE_LIMIT_TEXT);
-        const contentIndex = firstOutputIndex(text);
-        // Real output already started before the marker — this is response text,
-        // not a gateway error frame, so stop peeking and let it through.
-        if (contentIndex !== -1 && (errorIndex === -1 || contentIndex < errorIndex)) break;
-        if (errorIndex !== -1) {
+        const { answer, reasoning } = scanOutputFrames(text);
+        // Answer text already started before the marker — this is response text,
+        // not a gateway rejection, so stop peeking and let it through.
+        const answerStarted = answer !== -1 && (errorIndex === -1 || answer < errorIndex);
+        if (!answerStarted && errorIndex !== -1) {
           message = extractRateLimitMessage(text) || "token rate limit exceeded";
           break;
         }
+        if (answer !== -1) break;
+        // Thinking only: keep waiting for the rejection frame within the budget.
+        if (reasoning !== -1 && text.length >= REASONING_COMMIT_BYTES) break;
       }
     } catch {
       // Fail open: replay whatever was read and let the stream layer decide.

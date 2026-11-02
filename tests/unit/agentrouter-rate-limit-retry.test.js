@@ -109,6 +109,7 @@ describe("AgentRouterExecutor.execute — in-body token rate limit", () => {
 
   // The relay emits empty `response.output_text.delta` frames as keep-alives.
   // They carry no answer, so the peek must keep reading and still see the error.
+  // Thinking deltas are the same class: the rejection frame follows them.
   it("retries when an empty delta keep-alive precedes the error frame", async () => {
     const body = [
       `event: response.created`,
@@ -131,6 +132,49 @@ describe("AgentRouterExecutor.execute — in-body token rate limit", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(out.response.status).toBe(200);
     await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  });
+
+  // Reasoning models emit a thinking delta first; the rejection frame follows it.
+  // Thinking is not an answer, so the peek must keep reading instead of committing.
+  it("retries when a reasoning delta precedes the error frame", async () => {
+    const body = [
+      `event: response.created`,
+      `data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`,
+      "",
+      `event: response.reasoning_summary_text.delta`,
+      `data: {"type":"response.reasoning_summary_text.delta","delta":"Weighing the request"}`,
+      "",
+      `event: response.failed`,
+      `data: {"type":"response.failed","response":{"status":"failed","error":{"message":"${RATE_LIMIT_MESSAGE}"}}}`,
+      "",
+    ].join("\n");
+
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(sse(body)).mockResolvedValueOnce(sse(HEALTHY_BODY));
+    const pending = makeExecutor().execute(args);
+    await vi.advanceTimersByTimeAsync(agentRouterBackoffDelay(0));
+    const out = await pending;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(out.response.status).toBe(200);
+    await expect(out.response.text()).resolves.toBe(HEALTHY_BODY);
+  });
+
+  it("commits once answer text starts after a reasoning delta", async () => {
+    const body = [
+      `event: response.reasoning_summary_text.delta`,
+      `data: {"type":"response.reasoning_summary_text.delta","delta":"thinking"}`,
+      "",
+      `event: response.output_text.delta`,
+      `data: {"type":"response.output_text.delta","delta":"answer"}`,
+      "",
+    ].join("\n");
+
+    fetchMock.mockResolvedValueOnce(sse(body));
+    const out = await makeExecutor().execute(args);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(out.response.text()).resolves.toBe(body);
   });
 
   it("does not retry when the marker arrives inside real output", async () => {
