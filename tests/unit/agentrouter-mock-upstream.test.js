@@ -5,10 +5,10 @@
 // executor's own fetch/streaming path talk to it, so chunk boundaries, TCP
 // timing and undici's body reader are all exercised the way they are upstream.
 //
-// The executor hardcodes https://agentrouter.org/v1/... — global fetch is
-// wrapped BEFORE importing the module graph (proxyFetch.js captures
-// globalThis.fetch at import time) to redirect that host to 127.0.0.1.
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+// The executor hardcodes https://agentrouter.org/v1/... — proxyFetch calls the
+// package's own undici instance (not globalThis.fetch), so the `undici` module
+// is wrapped to redirect that host to 127.0.0.1 while still using real sockets.
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import http from "node:http";
 
 const RATE_LIMIT_MESSAGE =
@@ -29,7 +29,22 @@ const HEALTHY_BODY = [
   "",
 ].join("\n");
 
-const realFetch = globalThis.fetch;
+const net = vi.hoisted(() => ({ port: 0 }));
+
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetch: (input, init = {}) => {
+      const url = typeof input === "string" ? input : input?.url;
+      const target = String(url).replace(/^https:\/\/agentrouter\.org/, `http://127.0.0.1:${net.port}`);
+      // Drop the production TLS/keep-alive dispatcher: the mock is plain HTTP.
+      const { dispatcher, ...rest } = init;
+      return actual.fetch(target, rest);
+    },
+  };
+});
+
 const scenarios = [];
 const requests = [];
 let server;
@@ -63,14 +78,6 @@ function respondSlowly(res, frames, gapMs = 60) {
 
 const errorFrame = `event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed","error":{"code":"rate_limit_exceeded","message":"${RATE_LIMIT_MESSAGE}"}}}\n\n`;
 
-// Route the executor's hardcoded host at the local mock. Must happen before the
-// executor (and its proxyFetch.js) is imported.
-globalThis.fetch = (input, init) => {
-  const url = typeof input === "string" ? input : input?.url;
-  const target = String(url).replace(/^https:\/\/agentrouter\.org/, `http://127.0.0.1:${port}`);
-  return realFetch(target, init);
-};
-
 const { AgentRouterExecutor } = await import("../../open-sse/executors/agentrouter.js");
 
 beforeAll(async () => {
@@ -90,10 +97,10 @@ beforeAll(async () => {
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   port = server.address().port;
+  net.port = port;
 });
 
 afterAll(async () => {
-  globalThis.fetch = realFetch;
   await new Promise((resolve) => server.close(resolve));
 });
 
