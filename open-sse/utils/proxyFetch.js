@@ -32,7 +32,22 @@ export function isStaleSocketError(error) {
 // bundled-in-Node global fetch), so originalFetch/globalThis.fetch is not an
 // option once we build our own Agents.
 let undiciFetch = null;
+
+// Test seam: suites stub `globalThis.fetch` with a mock *before* importing this
+// module to intercept outbound calls. Capture that double at evaluation time —
+// the patch at the bottom of this file replaces `globalThis.fetch` afterwards.
+// Only vitest mocks qualify and only under test; production always takes the
+// package's undici fetch above, where our dispatchers are accepted. A fetch we
+// patched ourselves is skipped so delegation can never recurse.
+const testFetch = (() => {
+  if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") return null;
+  const candidate = globalThis.fetch;
+  if (typeof candidate !== "function" || candidate.__nineRouterPatched) return null;
+  return candidate.mock ? candidate : null;
+})();
+
 async function rawFetch(url, options) {
+  if (testFetch) return testFetch(url, options);
   undiciFetch ??= (await import("undici")).fetch;
   return undiciFetch(url, options);
 }
@@ -538,6 +553,9 @@ async function patchedFetch(url, options = {}) {
 }
 
 // Idempotency guard — only patch once to avoid wrapping multiple times
+// Marker so `testFetchOverride` never delegates back into our own patch.
+patchedFetch.__nineRouterPatched = true;
+
 if (globalThis.fetch !== patchedFetch) {
   globalThis.fetch = patchedFetch;
 }

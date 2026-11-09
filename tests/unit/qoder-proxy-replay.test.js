@@ -81,7 +81,10 @@ describe("Qoder signed inference transport", () => {
     expect(result.response.ok).toBe(true);
     await result.response.text();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(!!fetchMock.mock.calls[0][1].dispatcher).toBe(useProxy);
+    // Both lanes carry a dispatcher now: the proxy lane gets a ProxyAgent, and
+    // the direct lane gets our own Agent — upstream keeps it there on purpose so
+    // the TLS ClientHello survives DPI-shaped networks.
+    expect(fetchMock.mock.calls[0][1].dispatcher).toBeDefined();
   });
 
   it("preserves caller cancellation without replaying the request", async () => {
