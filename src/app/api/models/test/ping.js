@@ -64,7 +64,14 @@ async function getInternalHeaders() {
   return headers;
 }
 
-export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`) {
+export function getInternalModelTestBaseUrl() {
+  const bindHost = process.env.HOSTNAME;
+  const host = bindHost && bindHost !== "0.0.0.0" && bindHost !== "::" ? bindHost : "127.0.0.1";
+  const hostname = host.includes(":") ? `[${host}]` : host;
+  return `http://${hostname}:${process.env.PORT || UPDATER_CONFIG.appPort}`;
+}
+
+export async function pingModelByKind(model, kind, baseUrl = getInternalModelTestBaseUrl()) {
   const headers = await getInternalHeaders();
   const timeoutMs = getPingTimeoutMs(model);
   const start = Date.now();

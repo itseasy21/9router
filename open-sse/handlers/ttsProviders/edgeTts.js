@@ -1,5 +1,6 @@
 // Microsoft Edge / Bing TTS (no auth) — via Bing translator endpoint
 import { Buffer } from "node:buffer";
+import { fetch as undiciFetch } from "undici";
 import { UA } from "./_base.js";
 
 const REFRESH_MS = 5 * 60 * 1000; // token TTL ~1h, refresh early
@@ -52,7 +53,9 @@ async function ttsRequest(text, voiceId, token) {
 export async function fetchEdgeTtsVoices() {
   const now = Date.now();
   if (_voicesCache && now - _voicesCacheTime < VOICES_TTL) return _voicesCache;
-  const res = await fetch(
+  // The global proxyFetch dispatcher can get ECONNRESET from Bing's voice
+  // listing endpoint; Undici's default dispatcher works with this endpoint.
+  const res = await undiciFetch(
     "https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=6A5AA1D4EAFF4E9FB37E23D68491D6F4",
     { headers: { "User-Agent": UA } }
   );
