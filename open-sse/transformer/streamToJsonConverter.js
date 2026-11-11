@@ -36,6 +36,15 @@ function processSSEMessage(msg, state) {
     }
   } else if (eventType === "response.failed") {
     state.status = "failed";
+    const err = parsed.response?.error || parsed.error;
+    if (err != null && state.errorMessage == null) {
+      state.errorMessage = typeof err === "string" ? err : (err.message || JSON.stringify(err));
+    }
+  } else if (eventType === "error") {
+    const err = parsed.error || parsed.response?.error;
+    if (err != null && state.errorMessage == null) {
+      state.errorMessage = typeof err === "string" ? err : (err.message || JSON.stringify(err));
+    }
   }
 }
 
@@ -98,6 +107,7 @@ export async function convertResponsesStreamToJson(stream) {
     created_at: state.created,
     status: state.status || "completed",
     output,
-    usage: state.usage
+    usage: state.usage,
+    ...(state.errorMessage ? { errorMessage: state.errorMessage } : {})
   };
 }

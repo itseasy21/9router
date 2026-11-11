@@ -1,5 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { RETRYABLE_MESSAGE_TEXT, retryableFailureMessage } from "../services/agentrouterCapacity.js";
 
 // AgentRouter routes each model by its id prefix (mirrored by the
 // getModelTargetFormat family fallback in providerModels.js):
@@ -14,8 +15,13 @@ const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
 // AgentRouter pools upstream capacity, so a model's token budget can be spent at
 // any moment. When that happens the gateway answers HTTP 200 and reports the
 // failure inside the body — an `error` / `response.failed` frame whose message
-// reads:
+// reads either:
 //   "Your requests to gpt-6-astra for gpt-6-astra in eastus2 have exceeded token rate limit."
+// or the capacity rejection:
+//   "The system is currently experiencing high demand and cannot process your
+//    request. Your request exceeds the maximum usage size allowed during peak
+//    load. For improved capacity reliability, consider switching to Provisioned
+//    Throughput."
 // HTTP 200 is already committed by then, so BaseExecutor's status-based retry
 // never fires: the frame is translated into an ordinary assistant text chunk
 // ("[Error] ..."), the combo records a 0-token "success", and the client gets
@@ -23,7 +29,12 @@ const CHAT_COMPLETIONS_BASE_URL = "https://agentrouter.org/v1/chat/completions";
 // the request itself with exponential backoff, so a momentary budget exhaustion
 // recovers rather than failing the turn. Once retries are spent, answer a real
 // 429 so account/backoff handling and combo fallthrough work as usual.
-const RATE_LIMIT_TEXT = /exceeded\s+token\s+rate\s+limit/i;
+//
+// Both rejection shapes are retryable capacity signals and share one matcher so
+// a new wording on either side cannot slip through as an assistant answer again.
+const RETRYABLE_TEXT = RETRYABLE_MESSAGE_TEXT;
+// Kept as an alias: the token-rate-limit wording is the original signal name.
+const RATE_LIMIT_TEXT = RETRYABLE_TEXT;
 
 // Peeking buffers the head of the body. Only real *answer* output (visible text
 // or tool arguments) proves the turn is generating, so only that stops the peek
@@ -79,7 +90,13 @@ function hasVisibleText(raw) {
 // ("[Error] Your requests to gpt-6.1-sol for " → "gpt-6.1-sol in eastus2 have
 // exceeded token rate limit."), and committing on the first one handed the
 // client half a rejection as if it were the model's answer.
-const REJECTION_LEADS = ["[error] your requests to", "your requests to", "[error]"];
+const REJECTION_LEADS = [
+  "[error] your requests to",
+  "your requests to",
+  "[error] the system is currently experiencing high demand",
+  "the system is currently experiencing high demand",
+  "[error]",
+];
 
 /** True while `text` is still a possible prefix (or body) of a rejection. */
 function isRejectionLead(text) {
@@ -116,18 +133,16 @@ function isAnswerFrame(json) {
 
 /**
  * Message of a structured rejection frame (`error` / `response.failed`) when it
- * carries the token-rate-limit marker. This is the authoritative signal: a
- * gateway rejection is an error frame, so it wins over any answer text that
- * happened to land in the same read — nothing has been forwarded to the client
- * yet, so the request can still be retried instead of delivering a broken turn.
+ * carries a retryable capacity signal. Judged by the shared capacity matcher:
+ * the two known sentences plus native pressure codes/wording the relay may
+ * forward verbatim (`overloaded_error`, reworded rate-limit text, ...). This is
+ * the authoritative signal: a gateway rejection is an error frame, so it wins
+ * over any answer text that happened to land in the same read — nothing has
+ * been forwarded to the client yet, so the request can still be retried
+ * instead of delivering a broken turn.
  */
 function errorFrameMessage(json) {
-  if (!json || typeof json !== "object") return null;
-  const err = json.error ?? json.response?.error;
-  const message = typeof err === "string" ? err : (typeof err?.message === "string" ? err.message : null);
-  if (typeof message !== "string" || !RATE_LIMIT_TEXT.test(message)) return null;
-  if (json.type === "error" || json.type === "response.failed" || err != null) return message;
-  return null;
+  return retryableFailureMessage(json);
 }
 
 /** True when a parsed SSE frame carries thinking output. */
@@ -199,7 +214,7 @@ function extractRateLimitMessage(text) {
       // Partial frame — the fallback below still finds the sentence.
     }
   }
-  const match = text.match(/([^\n]*?exceeded\s+token\s+rate\s+limit[^\n]*)/i);
+  const match = text.match(/([^\n]*?(?:exceeded\s+token\s+rate\s+limit|currently\s+experiencing\s+high\s+demand|maximum\s+usage\s+size|provisioned\s+throughput)[^\n]*)/i);
   return match ? match[1].replace(/^data:\s*/, "").replace(/[\\"]+$/, "").trim() : null;
 }
 
@@ -260,6 +275,10 @@ export class AgentRouterExecutor extends DefaultExecutor {
         // Healthy body: hand back a stream that replays the peeked head.
         if (attempt > 0) {
           log?.info?.("RETRY", `AGENTROUTER | ${args.model} recovered on attempt ${attempt + 1}`);
+        } else {
+          // Debug breadcrumb: when a rejection is reported as missed, this
+          // shows exactly what the head-peek saw (first bytes of the body).
+          log?.debug?.("RETRY", `AGENTROUTER | ${args.model} head clean (${result.response.status}): ${peek.headSnippet || "<empty>"}`);
         }
         if (peek.replacementBody) {
           result.response = new Response(peek.replacementBody, {
@@ -293,7 +312,7 @@ export class AgentRouterExecutor extends DefaultExecutor {
    * Never throws — a peek failure degrades to "no match".
    */
   async peekRateLimitError(response) {
-    const empty = { matched: false, message: null, replacementBody: null };
+    const empty = { matched: false, message: null, replacementBody: null, headSnippet: null };
     if (!response || !response.ok || !response.body) return empty;
 
     const reader = response.body.getReader();
@@ -355,10 +374,11 @@ export class AgentRouterExecutor extends DefaultExecutor {
       // Fail open: replay whatever was read and let the stream layer decide.
     }
 
+    const headSnippet = text.slice(0, 200).replace(/\s+/g, " ").trim() || null;
     if (message) {
       try { await reader.cancel(); } catch { /* already closed */ }
       try { reader.releaseLock(); } catch { /* noop */ }
-      return { matched: true, message, replacementBody: null };
+      return { matched: true, message, replacementBody: null, headSnippet };
     }
 
     reader.releaseLock();
@@ -384,7 +404,7 @@ export class AgentRouterExecutor extends DefaultExecutor {
       },
     });
 
-    return { matched: false, message: null, replacementBody };
+    return { matched: false, message: null, replacementBody, headSnippet };
   }
 
   // Surface the synthetic 429's message instead of the raw JSON envelope.

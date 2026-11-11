@@ -8,6 +8,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
+import { RETRYABLE_ERROR_HINT } from "../../services/agentrouterCapacity.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -124,6 +125,20 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     try {
       const chunk = JSON.parse(payload);
       if (chunk?.error) streamError = chunk.error;
+      else if (chunk?.type === "response.failed" || chunk?.type === "error") {
+        // Upstream failure frames (e.g. AgentRouter's in-body capacity
+        // rejection on a forced-streaming lane): never let them masquerade
+        // as an empty-but-successful turn.
+        const nested = chunk?.error || chunk?.response?.error;
+        if (nested != null) {
+          const message = typeof nested === "string" ? nested : (nested.message || JSON.stringify(nested));
+          const code = (nested && typeof nested === "object" && (nested.code || nested.type)) || "";
+          streamError = { message, code };
+          if (RETRYABLE_ERROR_HINT.test(`${code} ${message}`)) streamError.status = 429;
+        } else {
+          chunks.push(chunk);
+        }
+      }
       else chunks.push(chunk);
     } catch { /* ignore malformed lines */ }
   }
@@ -207,6 +222,15 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
+      // A failed Responses stream (e.g. AgentRouter's in-body capacity
+      // rejection) is a failure, not an empty success: surface it so
+      // account rotation and combo fallthrough engage.
+      if (jsonResponse.status === "failed") {
+        const msg = jsonResponse.errorMessage || "Upstream response failed";
+        const status = RETRYABLE_ERROR_HINT.test(msg) ? 429 : HTTP_STATUS.BAD_GATEWAY;
+        appendLog({ status: `FAILED ${status}` });
+        return createErrorResult(status, msg);
+      }
       if (onRequestSuccess) await onRequestSuccess();
 
       const usage = jsonResponse.usage || {};

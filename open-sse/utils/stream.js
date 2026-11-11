@@ -4,7 +4,8 @@ import { PROVIDERS } from "../config/providers.js";
 import { liftReasoningAliases } from "../translator/concerns/reasoning.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
-import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
+import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds, buildStreamErrorBytes } from "./streamHelpers.js";
+import { retryableFailureMessage } from "../services/agentrouterCapacity.js";
 import { restoreToolNames } from "./opencodeFingerprint.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
@@ -96,6 +97,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let streamFailed = false;  // a retryable upstream failure was already surfaced as an SSE error
   let finalized = false;
   let completionFlushTimer = null;
 
@@ -316,9 +318,34 @@ export function createSSEStream(options = {}) {
 
         // Translate mode
         if (!trimmed) continue;
+        // After a surfaced failure, swallow the rest: the client already has
+        // its terminal error frame, and anything further (including the
+        // translator's flush-time completion) would contradict it.
+        if (streamFailed) continue;
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) continue;
+
+        // AgentRouter capacity failure arriving AFTER the executor already
+        // committed the body (real tokens flowed first, the rejection landed
+        // mid-stream): the head-peek can no longer retry, and forwarding the
+        // frame would translate into an "[Error] ..." assistant message that
+        // poisons the conversation history and stops the turn. Fail loudly
+        // instead: a real SSE error frame so strict clients raise, combos fall
+        // through, and the next turn starts clean. Responses-passthrough is
+        // excluded — the raw response.failed frame there is already proper.
+        const isResponsesPassthroughHere = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
+        if (provider === "agentrouter" && !isResponsesPassthroughHere) {
+          const failureMessage = retryableFailureMessage(parsed);
+          if (failureMessage) {
+            const errorBytes = buildStreamErrorBytes(429, `[agentrouter] ${failureMessage}`, sourceFormat);
+            reqLogger?.appendConvertedChunk?.(new TextDecoder().decode(errorBytes));
+            controller.enqueue(errorBytes);
+            sseEmittedCount++;
+            streamFailed = true;
+            continue;
+          }
+        }
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
         const isOpenAIResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -498,6 +525,13 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
+          finalizeStream();
+          return;
+        }
+
+        // A surfaced mid-stream failure already delivered the terminal error
+        // frame: never follow it with a synthesized completion.
+        if (streamFailed) {
           finalizeStream();
           return;
         }
