@@ -270,7 +270,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // AgentRouter time-bound models (claude-opus-5 / gpt-6-astra): while paused for
   // budget-pool exhaustion, skip dispatch so combos fall through to the next model
   // and solo requests get a 503 with retry-after until the next window. Each model
-  // has its own release times (astra: 07:00/19:00 UTC, opus-5: 02:00/11:00 UTC).
+  // has its own release times (astra: 02:00 UTC daily, opus-5: 02:00/11:00 UTC).
   if (isAgentRouterTimeBoundModel(provider, model) && isAgentRouterBudgetPaused(provider, model)) {
     const untilMs = getAgentRouterPauseUntil(model) || Date.now();
     const retryAfter = new Date(untilMs).toISOString();
