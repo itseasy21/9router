@@ -145,11 +145,12 @@ import p144 from "./muse-web.js";
 import p146 from "./chatgpt-web.js";
 import p147 from "./veoaifree-web.js";
 import p151 from "./uc-web.js";
-// custom-v: providers added on this branch
+// custom-v: agentrouter + modal added on this branch
 import p152 from "./agentrouter.js";
 import p153 from "./modal.js";
 import p154 from "./runcrate.js";
 import p155 from "./nace.js";
+import p156 from "./sensenova-intl.js";
 export default [
   p0,
   p1,
@@ -299,4 +300,5 @@ export default [
   p153,
   p154,
   p155,
+  p156,
 ];
