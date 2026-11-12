@@ -10,15 +10,18 @@
  *
  * Schedule (Beijing = UTC+8):
  *   - claude-opus-5 : 10:00 / 19:00 Beijing = 02:00 / 11:00 UTC
- *   - gpt-6-astra   : 15:00 / 03:00 Beijing = 07:00 / 19:00 UTC — the supply of
- *                      a batch lasts only while it lasts
+ *   - gpt-6-astra   : 10:00 Beijing = 02:00 UTC, ONE release per day — the batch
+ *                      is expected to last ~18h but only while supplies last,
+ *                      so the next guaranteed supply is tomorrow's release
  *   - sol line      : released 24/7 ("gpt-6.1sol is no longer limited in
  *                      quantity — it is now available 24/7"), never gated
  *
  * Strategy:
  *   - When the exhausted-budget error is seen for a gated model, pause the model
  *     (in-memory) until the NEXT window start instead of letting every request
- *     burn a round-trip against a dead budget pool.
+ *     burn a round-trip against a dead budget pool. A model with a single daily
+ *     window (astra) therefore pauses until tomorrow's release, which is the
+ *     only time supply is guaranteed — its batch may run out hours early.
  *   - While paused, dispatch skips the model so combo/account fallback routes
  *     the request elsewhere; solo requests get a 503 with retry-after.
  *   - Pause expires automatically at the next window (budget refreshes) and is
@@ -38,7 +41,7 @@ export const AGENTROUTER_PROVIDER = "agentrouter";
  */
 export const AGENTROUTER_BUDGET_WINDOWS_UTC_HOURS = {
   "claude-opus-5": [2, 11],  // 10:00 / 19:00 Beijing
-  "gpt-6-astra": [7, 19],    // 15:00 / 03:00 Beijing
+  "gpt-6-astra": [2],        // 10:00 Beijing — one limited release per day
 };
 
 /**
@@ -120,8 +123,9 @@ export function getNextBudgetWindowStart(model, now = Date.now()) {
 }
 
 /**
- * Human-readable window times for logs and client messages,
- * e.g. "07:00/19:00 UTC (15:00/03:00 Beijing)".
+ * Human-readable window times for logs and client messages, e.g.
+ * "02:00/11:00 UTC (10:00/19:00 Beijing)" or, for a single daily release,
+ * "02:00 UTC (10:00 Beijing)".
  * @param {string|null} model
  * @returns {string|null}
  */

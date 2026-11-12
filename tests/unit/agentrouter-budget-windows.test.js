@@ -1,7 +1,7 @@
 // AgentRouter time-bound model gating. Supply is released in daily batches:
 //   - claude-opus-5 : 10:00 / 19:00 Beijing = 02:00 / 11:00 UTC
-//   - gpt-6-astra   : 15:00 / 03:00 Beijing = 07:00 / 19:00 UTC (batch lasts
-//                      only while it lasts)
+//   - gpt-6-astra   : 10:00 Beijing = 02:00 UTC, ONE limited release per day
+//                      (~18h expected, but only while supplies last)
 //   - the sol line   : released 24/7 — never gated
 // When the upstream returns the "Budget pool quota has been exhausted" error,
 // the model must pause until the next window start of ITS OWN schedule and
@@ -46,13 +46,14 @@ describe("getNextBudgetWindowStart — per-model daily windows", () => {
     expect(getNextBudgetWindowStart("claude-opus-5", DAY + 23 * HOUR + 59 * 60 * 1000)).toBe(DAY + 24 * HOUR + 2 * HOUR);
   });
 
-  it("gpt-6-astra uses the new 07:00 / 19:00 UTC (15:00 / 03:00 Beijing)", () => {
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 1 * HOUR)).toBe(DAY + 7 * HOUR);
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 6 * HOUR + 59 * 60 * 1000)).toBe(DAY + 7 * HOUR);
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 7 * HOUR)).toBe(DAY + 19 * HOUR);
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 18 * HOUR + 59 * 60 * 1000)).toBe(DAY + 19 * HOUR);
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 19 * HOUR)).toBe(DAY + 24 * HOUR + 7 * HOUR);
-    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 23 * HOUR + 59 * 60 * 1000)).toBe(DAY + 24 * HOUR + 7 * HOUR);
+  it("gpt-6-astra uses the single daily 02:00 UTC (10:00 Beijing) release", () => {
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 1 * HOUR)).toBe(DAY + 2 * HOUR);
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 1 * HOUR + 59 * 60 * 1000)).toBe(DAY + 2 * HOUR);
+    // Exactly at the release and any time after it → tomorrow's release only.
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 2 * HOUR)).toBe(DAY + 24 * HOUR + 2 * HOUR);
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 7 * HOUR)).toBe(DAY + 24 * HOUR + 2 * HOUR);
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 19 * HOUR)).toBe(DAY + 24 * HOUR + 2 * HOUR);
+    expect(getNextBudgetWindowStart("gpt-6-astra", DAY + 23 * HOUR + 59 * 60 * 1000)).toBe(DAY + 24 * HOUR + 2 * HOUR);
   });
 
   it("never returns a window in the past (strictly after now)", () => {
@@ -70,8 +71,8 @@ describe("getNextBudgetWindowStart — per-model daily windows", () => {
 describe("getAgentRouterBudgetWindows — schedule lookup", () => {
   it("exposes the per-model window hours", () => {
     expect(getAgentRouterBudgetWindows("claude-opus-5")).toEqual([2, 11]);
-    expect(getAgentRouterBudgetWindows("gpt-6-astra")).toEqual([7, 19]);
-    expect(AGENTROUTER_BUDGET_WINDOWS_UTC_HOURS["gpt-6-astra"]).toEqual([7, 19]);
+    expect(getAgentRouterBudgetWindows("gpt-6-astra")).toEqual([2]);
+    expect(AGENTROUTER_BUDGET_WINDOWS_UTC_HOURS["gpt-6-astra"]).toEqual([2]);
   });
 
   it("returns null for ungated models", () => {
@@ -83,7 +84,7 @@ describe("getAgentRouterBudgetWindows — schedule lookup", () => {
 
 describe("formatAgentRouterWindowTimes — logs and client messages", () => {
   it("renders both UTC and Beijing release times", () => {
-    expect(formatAgentRouterWindowTimes("gpt-6-astra")).toBe("07:00/19:00 UTC (15:00/03:00 Beijing)");
+    expect(formatAgentRouterWindowTimes("gpt-6-astra")).toBe("02:00 UTC (10:00 Beijing)");
     expect(formatAgentRouterWindowTimes("claude-opus-5")).toBe("02:00/11:00 UTC (10:00/19:00 Beijing)");
   });
 
@@ -127,16 +128,18 @@ describe("noteAgentRouterBudgetError — pause on the upstream error", () => {
     expect(isAgentRouterBudgetPaused("agentrouter", "claude-opus-5", now)).toBe(true);
   });
 
-  it("pauses gpt-6-astra until ITS window, not the opus-5 schedule", () => {
-    const now = DAY + 1 * HOUR;
+  it("pauses gpt-6-astra until ITS daily release, not a later opus-5 window", () => {
+    // After astra's 02:00 release, opus-5 still has an 11:00 window today while
+    // astra's only guaranteed supply is tomorrow's 02:00 release.
+    const now = DAY + 3 * HOUR;
     expect(noteAgentRouterBudgetError("agentrouter", "gpt-6-astra", 503, "Budget pool quota has been exhausted. Please ask an administrator...", now)).toBe(true);
-    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 7 * HOUR);
+    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 24 * HOUR + 2 * HOUR);
   });
 
   it("also pauses when the raw text is passed without the JSON envelope", () => {
     const now = DAY + 1 * HOUR;
     expect(noteAgentRouterBudgetError("agentrouter", "gpt-6-astra", 503, "Budget pool quota has been exhausted. Please ask an administrator...", now)).toBe(true);
-    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 7 * HOUR);
+    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 2 * HOUR);
   });
 
   it("never pauses the 24/7 sol line", () => {
@@ -172,12 +175,12 @@ describe("isAgentRouterBudgetPaused — un-pause at the next window", () => {
     expect(getAgentRouterPauseUntil("claude-opus-5")).toBeNull();
   });
 
-  it("un-pauses gpt-6-astra at its own 07:00 UTC window", () => {
+  it("un-pauses gpt-6-astra at its own 02:00 UTC release", () => {
     const now = DAY + 1 * HOUR;
     noteAgentRouterBudgetError("agentrouter", "gpt-6-astra", 503, BUDGET_ERROR, now);
 
-    expect(isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", DAY + 6 * HOUR)).toBe(true);
-    expect(isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", DAY + 7 * HOUR)).toBe(false);
+    expect(isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", DAY + 1 * HOUR + 30 * 60 * 1000)).toBe(true);
+    expect(isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", DAY + 2 * HOUR)).toBe(false);
     expect(getAgentRouterPauseUntil("gpt-6-astra")).toBeNull();
   });
 
@@ -185,11 +188,12 @@ describe("isAgentRouterBudgetPaused — un-pause at the next window", () => {
     const now = DAY + 1 * HOUR;
     noteAgentRouterBudgetError("agentrouter", "gpt-6-astra", 503, BUDGET_ERROR, now);
 
-    const nextWindow = DAY + 7 * HOUR;
+    const nextWindow = DAY + 2 * HOUR;
     isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", nextWindow); // un-pause
     noteAgentRouterBudgetError("agentrouter", "gpt-6-astra", 503, BUDGET_ERROR, nextWindow + 1);
 
-    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 19 * HOUR);
+    // A batch that runs out hours into the day waits for tomorrow's release.
+    expect(getAgentRouterPauseUntil("gpt-6-astra")).toBe(DAY + 24 * HOUR + 2 * HOUR);
     expect(isAgentRouterBudgetPaused("agentrouter", "gpt-6-astra", nextWindow + 1)).toBe(true);
   });
 });
@@ -203,7 +207,7 @@ describe("integration with existing fallback machinery", () => {
   it("the gate's 503 response text falls through to the next combo model", () => {
     // handleSingleModelChat returns this message while paused; the combo loop
     // must treat it as a fallback-able failure, not a hard stop.
-    const gateMessage = "[agentrouter/gpt-6-astra] supply exhausted — next batch at 07:00/19:00 UTC (15:00/03:00 Beijing)";
+    const gateMessage = "[agentrouter/gpt-6-astra] supply exhausted — next batch at 02:00 UTC (10:00 Beijing)";
     const result = checkFallbackError(503, gateMessage);
     expect(result.shouldFallback).toBe(true);
   });
