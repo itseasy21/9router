@@ -4,7 +4,7 @@
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { getThinkingLevels } from "../../providers/thinkingLevels.js";
-import { PROVIDERS } from "../../providers/index.js";
+import { PROVIDERS, PASSTHROUGH_PROVIDERS } from "../../providers/index.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 
 // Map a target wire-format to its native thinking format (when capability has none).
@@ -150,6 +150,30 @@ const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-bu
 // Self-hosted gateways (vLLM/SGLang) validate thinking.budget_tokens; first-party
 // DeepSeek ignores it. Only dynamic compat nodes opt into the passthrough.
 const isOpenAICompatibleNode = (provider) => String(provider || "").startsWith("openai-compatible-");
+
+// Routing gateways (OpenRouter and the catalogues that clone it) accept any model id
+// and publish each model's reasoning metadata themselves (GET /api/v1/models →
+// reasoning.supported_efforts). Their model ids are therefore absent from our
+// capability tables, which resolve to reasoning:false — and stripping on that signal
+// silently dropped the client's effort for every passthrough model. Only gateways
+// that really do accept the OpenAI effort enum qualify; a normal provider must keep
+// the strip, because it would 400 on a field the model does not support.
+function acceptsReasoningPassthrough(provider) {
+  if (!provider || !PASSTHROUGH_PROVIDERS.has(provider)) return false;
+  const transport = PROVIDERS[provider];
+  return (transport?.thinkingFormat || transport?.format || "openai") === "openai";
+}
+
+// Effort to forward verbatim on the OpenAI wire; null means "send no field".
+function passthroughEffort(cfg) {
+  if (!cfg) return null;
+  const level = cfg.mode === "level" ? cfg.level
+    : cfg.mode === "budget" ? budgetToLevel(cfg.budget)
+    : null;
+  if (!level || level === "auto" || level === "none") return null;
+  // "ultra" is 9router's own tier; the gateway enum tops out at max.
+  return level === "ultra" ? "max" : level;
+}
 
 function resolveFormat(targetFormat, model, provider) {
   if (targetFormat === "commandcode") return "commandcode";
@@ -511,6 +535,15 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
 
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
+    // …unless this is a passthrough gateway: the model is only unknown here, not
+    // known to be non-reasoning. Forward an explicit client ask so OpenRouter can
+    // apply it per its own per-model metadata; never invent one when none was sent.
+    if (FORMAT_TO_NATIVE[targetFormat] === "openai" && acceptsReasoningPassthrough(provider)) {
+      const effort = passthroughEffort(cfg);
+      stripAll(body);
+      if (effort) body.reasoning_effort = effort;
+      return body;
+    }
     stripAll(body);
     return body;
   }

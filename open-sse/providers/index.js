@@ -47,5 +47,12 @@ for (const entry of REGISTRY) {
   if (Object.keys(mediaFields).length) PROVIDER_MEDIA[entry.id] = mediaFields;
 }
 
+// Forward client model ids to a catalogue we cannot enumerate (OpenRouter & clones).
+// Kept out of PROVIDERS so the provider snapshot stays stable; the translation layer
+// reads this to keep an explicit reasoning effort on ids absent from the capability tables.
+export const PASSTHROUGH_PROVIDERS = new Set(
+  REGISTRY.filter((entry) => entry.passthroughModels).map((entry) => entry.id)
+);
+
 // TTS model/voice tables keyed by special names (openai-tts-models, ...), not provider ids
 Object.assign(PROVIDER_MODELS, buildTtsProviderModels());
