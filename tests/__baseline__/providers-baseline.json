@@ -1349,5 +1349,15 @@
       "reasoningAliasFields": true
     },
     "format": "openai"
+  },
+  "aws-quick": {
+    "baseUrl": "https://quick.aws.com",
+    "format": "openai",
+    "authType": "cookie",
+    "timeoutMs": 180000,
+    "quick": {
+      "appVersion": "1.2.4660",
+      "channel": "prod"
+    }
   }
 }

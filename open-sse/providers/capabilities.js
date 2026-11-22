@@ -518,6 +518,16 @@ PROVIDER_CAPABILITIES["sensenova-intl"] = {
   "sensenova-6.8-flash-lite": SENSENOVA_INTL_CHAT,
   "sensenova-6.7-flash-lite": SENSENOVA_INTL_CHAT,
 };
+// AWS Quick exposes tiers (agent_mode) rather than model ids; the server routes
+// each tier to a concrete Claude backend. All tiers reason via reasoning_effort
+// and accept small inline images.
+const AWS_QUICK_TIER = { vision: true, reasoning: true, thinkingFormat: "openai", tools: true, contextWindow: 1000000, maxOutput: 128000 };
+PROVIDER_CAPABILITIES["aws-quick"] = {
+  fast: AWS_QUICK_TIER,
+  balanced: AWS_QUICK_TIER,
+  smart: AWS_QUICK_TIER,
+  advanced: AWS_QUICK_TIER,
+};
 
 /**
  * Pattern fallback — glob (* = wildcard), matched case-insensitively and

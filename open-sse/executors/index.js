@@ -38,6 +38,7 @@ import { DevinCliExecutor } from "./devin-cli.js";
 import { ModalExecutor } from "./modal.js";
 import { GlmExecutor } from "./glm.js";
 import { AgentRouterExecutor } from "./agentrouter.js";
+import { AwsQuickExecutor } from "./aws-quick.js";
 
 const executors = {
   glm: new GlmExecutor(),
@@ -86,6 +87,7 @@ const executors = {
   "devin-cli": new DevinCliExecutor(),
   modal: new ModalExecutor(),
   agentrouter: new AgentRouterExecutor(),
+  "aws-quick": new AwsQuickExecutor(),
   bedrock: new BedrockExecutor(),
   br: new BedrockExecutor(), // Alias for bedrock
   // Second Bedrock entry for xAI's Grok, which speaks OpenAI Chat Completions rather than the
@@ -143,3 +145,4 @@ export { default as ZedExecutor } from "./zed.js";
 export { default as WindsurfExecutor } from "./windsurf.js";
 export { DevinCliExecutor } from "./devin-cli.js";
 export { GlmExecutor } from "./glm.js";
+export { AwsQuickExecutor } from "./aws-quick.js";

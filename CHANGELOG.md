@@ -1,3 +1,13 @@
+# Unreleased
+
+## Features
+- **AWS Quick**: add an `aws-quick` provider that drives Amazon Quick's desktop chat WebSocket from a pasted session (one connection per account), with OIDC refresh-token rotation, `fast`/`balanced`/`smart`/`advanced` agent-mode tiers, OpenAI tool-call bridging, inline images, per-account thread reuse, and the desktop client's exact handshake identity (surfaceType, appVersion, channel, Electron-style User-Agent)
+
+## Fixes
+- **Routing**: resolve registry `uiAlias` model prefixes (e.g. `AQ/...` for AWS Quick) to their provider IDs instead of falling through to the default OpenAI transport
+- **AWS Quick**: fix live turns failing before the WebSocket handshake (`this.log is not a function`) and the follow-on `.status` crash by normalizing the socket logger and returning chatCore's `{ response, url, headers, transformedBody }` executor envelope
+- **AWS Quick**: match Quick 1.2.4660's desktop identity exactly — platform surface (`QUICK_WORK_DESKTOP_MAC` on macOS/Linux, `QUICK_WORK_DESKTOP_WINDOWS` on win32), Electron 43.8.7 / Chrome 150.0.7871.250 User-Agent, a stable per-connection `workingSessionId`, the desktop query-parameter order, and the desktop `session_connect` feature flags; AIDP enterprise sessions use the bearer-header branch instead of `?token=`
+
 # v0.5.119 (2026-11-11)
 
 ## Features

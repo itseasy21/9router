@@ -1008,6 +1008,10 @@ case "llm7": {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
       }
+      case "aws-quick": {
+        const { probeAwsQuickCredentials } = await import("open-sse/services/awsQuick/probe.js");
+        return probeAwsQuickCredentials(connection);
+      }
       default:
         return { valid: false, error: "Provider test not supported" };
     }

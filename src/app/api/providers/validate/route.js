@@ -660,6 +660,16 @@ export async function POST(request) {
           break;
         }
 
+        case "aws-quick": {
+          // Quick has no public HTTP API: validate by parsing the session and
+          // opening the desktop WebSocket handshake.
+          const { probeAwsQuickCredentials } = await import("open-sse/services/awsQuick/probe.js");
+          const result = await probeAwsQuickCredentials({ apiKey, providerSpecificData });
+          isValid = result.valid;
+          error = result.error || null;
+          break;
+        }
+
         default: {
           // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
           const cfg = PROVIDERS[provider];

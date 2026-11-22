@@ -151,6 +151,7 @@ import p153 from "./modal.js";
 import p154 from "./runcrate.js";
 import p155 from "./nace.js";
 import p156 from "./sensenova-intl.js";
+import p157 from "./aws-quick.js";
 export default [
   p0,
   p1,
@@ -301,4 +302,5 @@ export default [
   p154,
   p155,
   p156,
+  p157,
 ];
