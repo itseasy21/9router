@@ -1,6 +1,8 @@
 import REGISTRY from "../providers/registry/index.js";
 
-// Alias→id derived from registry single-source: id→id, alias→id, aliases[]→id.
+// Alias→id derived from registry single-source: id→id, alias→id, uiAlias→id, aliases[]→id.
+// uiAlias matters because the dashboard/model picker uses it as the prefix
+// (e.g. "AQ/balanced" for aws-quick), not the engine's canonical alias.
 // Media-only providers without a registry transport entry keep explicit aliases here.
 const MEDIA_ONLY_ALIASES = {
   el: "elevenlabs",
@@ -14,6 +16,7 @@ const ALIAS_TO_PROVIDER_ID = { ...MEDIA_ONLY_ALIASES };
 for (const entry of REGISTRY) {
   ALIAS_TO_PROVIDER_ID[entry.id] = entry.id;
   if (entry.alias) ALIAS_TO_PROVIDER_ID[entry.alias] = entry.id;
+  if (entry.uiAlias) ALIAS_TO_PROVIDER_ID[entry.uiAlias] = entry.id;
   for (const a of entry.aliases || []) ALIAS_TO_PROVIDER_ID[a] = entry.id;
 }
 
