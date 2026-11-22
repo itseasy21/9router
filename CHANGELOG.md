@@ -7,6 +7,7 @@
 - **Routing**: resolve registry `uiAlias` model prefixes (e.g. `AQ/...` for AWS Quick) to their provider IDs instead of falling through to the default OpenAI transport
 - **AWS Quick**: fix live turns failing before the WebSocket handshake (`this.log is not a function`) and the follow-on `.status` crash by normalizing the socket logger and returning chatCore's `{ response, url, headers, transformedBody }` executor envelope
 - **AWS Quick**: match Quick 1.2.4660's desktop identity exactly — platform surface (`QUICK_WORK_DESKTOP_MAC` on macOS/Linux, `QUICK_WORK_DESKTOP_WINDOWS` on win32), Electron 43.8.7 / Chrome 150.0.7871.250 User-Agent, a stable per-connection `workingSessionId`, the desktop query-parameter order, and the desktop `session_connect` feature flags; AIDP enterprise sessions use the bearer-header branch instead of `?token=`
+- **AWS Quick**: deliver client-tool instructions through `custom_prompt` instead of the user transcript (Quick was refusing them as pasted text), preserve prose around `<tool_call>` markers instead of swallowing the reply, and stop the invalid app-level ping that produced `unknown_message_type` status noise
 
 # v0.5.119 (2026-11-11)
 

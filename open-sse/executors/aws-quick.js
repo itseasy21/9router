@@ -192,7 +192,7 @@ function usageFrom(raw) {
 
 function customPromptFor(hasTools) {
   return hasTools
-    ? "Calling context: this chat is driven by an external application. The client tools listed in the message are executed by that application on the user's machine; this session has no connected device, so built-in device tools (local files, apps) cannot run here. For questions about the user's project, files or code, call the client tools to read current contents — earlier tool results may be partial, and a fresh read beats guessing."
+    ? "Calling context: this chat is driven by an external application. The client tools in the instructions above are executed by that application on the user's machine; this session has no connected device, so built-in device tools (local files, apps) cannot run here. For questions about the user's project, files or code, call the client tools to read current contents — earlier tool results may be partial, and a fresh read beats guessing."
     : "Calling context: this chat is driven by an external application and has no connected device. Built-in tools that need the user's device (local files, apps) cannot run in this session — say so plainly rather than attempting them.";
 }
 
@@ -203,7 +203,7 @@ function lastAssistantIndex(messages) {
   return -1;
 }
 
-function buildTurn({ body, model, credentials, session, forceFresh }) {
+export function buildTurn({ body, model, credentials, session, forceFresh }) {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   if (!messages.length) {
     throw new QuickSessionError("messages is required", { kind: "invalid", status: 400 });
@@ -222,21 +222,29 @@ function buildTurn({ body, model, credentials, session, forceFresh }) {
   const tools = toolsDisabled ? [] : normalizeTools(body?.tools);
 
   const systemPrompt = systemText ? capText(systemText, SYSTEM_PROMPT_CAP) : "";
-  const customPrompt = customPromptFor(tools.length > 0);
   const psd = credentials?.providerSpecificData || {};
   const identity = credentials?.connectionId || session.email || session.ws_host;
   const scope = scopeFor(identity, mode, effort, systemText, tools.map((tool) => tool.name));
   const reuse = !forceFresh && psd.awsQuickThreadReuse !== false ? findReuse(scope, convo) : null;
 
-  const textCap = Math.max(8 * 1024, UPSTREAM_TEXT_LIMIT - byteLen(systemPrompt) - byteLen(customPrompt) - 1024);
+  // Quick's own desktop client sends instructions in custom_prompt, not in the
+  // user's text. Keep client tools there too: when this block is prepended to
+  // the transcript, Quick correctly treats it as pasted content and refuses it.
+  const callingContext = customPromptFor(tools.length > 0);
   let preamble = tools.length ? buildToolPreamble(tools, body?.tool_choice) : "";
-  if (preamble && byteLen(preamble) > textCap - 8192) {
+  const customBudget = Math.max(4 * 1024, UPSTREAM_TEXT_LIMIT - byteLen(systemPrompt) - byteLen(callingContext) - 8 * 1024);
+  if (preamble && byteLen(preamble) > customBudget) {
     preamble = buildToolPreamble(tools, body?.tool_choice, { lite: true });
   }
-  if (preamble && byteLen(preamble) > textCap - 4096) {
+  if (preamble && byteLen(preamble) > customBudget) {
     preamble = buildToolPreamble(tools, body?.tool_choice, { namesOnly: true });
   }
-  const textBudget = Math.max(4 * 1024, textCap - byteLen(preamble));
+  const customPrompt = capText(
+    [preamble, callingContext].filter(Boolean).join("\n\n"),
+    Math.max(4 * 1024, UPSTREAM_TEXT_LIMIT - byteLen(systemPrompt) - 8 * 1024),
+  );
+  const textCap = Math.max(8 * 1024, UPSTREAM_TEXT_LIMIT - byteLen(systemPrompt) - byteLen(customPrompt) - 1024);
+  const textBudget = textCap;
 
   const imageBudget = Math.max(0, Math.min(QUICK_IMAGE_BUDGET, textBudget - QUICK_IMAGE_TEXT_RESERVE));
   const imageMessages = reuse ? reuse.delta : convo.slice(lastAssistantIndex(convo) + 1);
@@ -248,10 +256,9 @@ function buildTurn({ body, model, credentials, session, forceFresh }) {
   const bodyText = reuse
     ? renderDelta(reuse.delta, { maxBytes: turnBudget, stats })
     : renderTranscript(convo, { maxBytes: turnBudget, stats });
-  let text = `${bodyText || "(empty)"}${imageNote}`;
-  let upstreamText = preamble ? `${preamble}\n\n${text}` : text;
+  let upstreamText = `${bodyText || "(empty)"}${imageNote}`;
   if (byteLen(upstreamText) > textCap) {
-    upstreamText = byteLen(text) <= textCap ? text : capText(text, textCap);
+    upstreamText = capText(upstreamText, textCap);
     stats.truncated = true;
   }
   if (!upstreamText.trim()) upstreamText = "(empty)";
@@ -310,7 +317,11 @@ async function* quickTurnEvents({ socket, threadId, payload, parser, signal, idl
       }
     } else if (type === "status") {
       const status = data.status || data.message;
-      if (status && !/pong|ok/i.test(String(status))) yield { type: "note", text: String(status) };
+      // The desktop ignores unknown_message_type; surfacing it only adds noise
+      // to the assistant's answer.
+      if (status && status !== "unknown_message_type" && !/pong|ok/i.test(String(status))) {
+        yield { type: "note", text: String(status) };
+      }
     }
   }
   if (parser) {
@@ -319,7 +330,6 @@ async function* quickTurnEvents({ socket, threadId, payload, parser, signal, idl
     for (const call of tail.calls) {
       yield { type: "tool_call", id: newToolCallId(), name: call.name, arguments: JSON.stringify(call.arguments ?? {}) };
     }
-    if (tail.dropped) yield { type: "note", text: "tool call output was truncated" };
   }
 }
 

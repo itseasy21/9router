@@ -42,7 +42,6 @@ export const QUICK_STALE_TOOL_CAP = 2 * 1024;
 export const QUICK_IMAGE_BUDGET = 32 * 1024;
 export const QUICK_IMAGE_TEXT_RESERVE = 8 * 1024;
 
-export const QUICK_PING_MS = 25_000;
 export const QUICK_CONNECT_TIMEOUT_MS = 30_000;
 export const QUICK_HANDSHAKE_ACK_MS = 8_000;
 export const QUICK_IDLE_TIMEOUT_MS = 180_000;

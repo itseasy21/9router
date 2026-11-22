@@ -11,7 +11,7 @@ import { effortFor, modeFor, pickImages, renderTranscript } from "open-sse/servi
 import { buildToolPreamble, createToolCallParser, normalizeTools } from "open-sse/services/awsQuick/tools.js";
 import { chainHashes, findReuse, rememberTurn, resetThreadCache, scopeFor } from "open-sse/services/awsQuick/threads.js";
 import { decodeDownlinkFrame, normalizeLogSink, quickAuthUsesHeader } from "open-sse/services/awsQuick/quickSocket.js";
-import { AwsQuickExecutor } from "open-sse/executors/aws-quick.js";
+import { AwsQuickExecutor, buildTurn } from "open-sse/executors/aws-quick.js";
 import { buildQuickHeaders, buildQuickSessionConnect, buildQuickWsUrl, encodeQuickInputFrame } from "open-sse/services/awsQuick/fingerprint.js";
 import { QUICK_SURFACE, QUICK_SURFACE_MAC, QUICK_SURFACE_WINDOWS, quickSurfaceForPlatform } from "open-sse/services/awsQuick/constants.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -145,6 +145,37 @@ describe("aws-quick rendering", () => {
     expect(rest.calls).toEqual([{ name: "read", arguments: { path: "a.js" } }]);
     expect(rest.text).toContain("done");
     expect(parser.end().calls).toEqual([]);
+  });
+
+  it("keeps a tool_call marker mentioned in prose instead of swallowing the reply", () => {
+    const parser = createToolCallParser();
+    let text = parser.push("The message says to reply in a `<tool_call>` format. I won't.").text;
+    text += parser.end().text;
+    expect(text).toContain("`<tool_call>` format. I won't.");
+    expect(text).not.toContain("tool call output was truncated");
+  });
+
+  it("passes malformed closed blocks through as text", () => {
+    const parser = createToolCallParser();
+    const result = parser.push("before <tool_call>not json</tool_call> after");
+    expect(result.calls).toEqual([]);
+    expect(result.text).toBe("before <tool_call>not json</tool_call> after");
+  });
+
+  it("puts client tools in custom_prompt, not in the user transcript", () => {
+    const tools = normalizeTools([
+      { type: "function", function: { name: "read", description: "Read a file", parameters: { type: "object", properties: {} } } },
+    ]);
+    const turn = buildTurn({
+      model: "fast",
+      body: { messages: [{ role: "system", content: "sys" }, { role: "user", content: "hi" }], tools, tool_choice: "auto" },
+      credentials: { connectionId: "conn-1" },
+      session: { email: "me@example.com", ws_host: "cell.example" },
+    });
+    expect(turn.payload.text).toBe("hi");
+    expect(turn.payload.custom_prompt).toContain("[Client tool calling]");
+    expect(turn.payload.custom_prompt).toContain("read");
+    expect(turn.payload.custom_prompt).toContain("Calling context");
   });
 });
 

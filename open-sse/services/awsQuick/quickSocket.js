@@ -19,7 +19,6 @@ import {
   QUICK_CONNECT_TIMEOUT_MS,
   QUICK_HANDSHAKE_ACK_MS,
   QUICK_IDLE_TIMEOUT_MS,
-  QUICK_PING_MS,
   QUICK_SURFACE,
 } from "./constants.js";
 
@@ -99,7 +98,6 @@ export class QuickSocket {
     this.buffer = new Uint8Array(0);
     this.waiters = new Map();
     this.connecting = null;
-    this.pingTimer = null;
     this.sessionAck = null;
     this.connectFail = null;
   }
@@ -214,27 +212,9 @@ export class QuickSocket {
       throw error;
     }
 
-    this._startPing();
+    // Do not send an application-level `ping`: Quick answers it with
+    // `status: unknown_message_type`. WebSocket ping/pong is handled by undici.
     this.log("[aws-quick] socket open");
-  }
-
-  _startPing() {
-    this._stopPing();
-    this.pingTimer = setInterval(() => {
-      try {
-        this._sendRaw({ type: "ping", payload: { timestamp: Date.now() } });
-      } catch {
-        /* socket closed — the close handler fails pending turns */
-      }
-    }, QUICK_PING_MS);
-    this.pingTimer.unref?.();
-  }
-
-  _stopPing() {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
   }
 
   _sendRaw(obj) {
@@ -386,14 +366,12 @@ export class QuickSocket {
   }
 
   async reconnect() {
-    this._stopPing();
     try { this.ws?.close(4001, "reconnect"); } catch { /* ignore */ }
     this.ws = null;
     await this.connect();
   }
 
   async close() {
-    this._stopPing();
     this._failAll(new QuickSocketError("AWS Quick socket closed", { kind: "ws" }));
     try { this.ws?.close(1000, "bye"); } catch { /* ignore */ }
     this.ws = null;

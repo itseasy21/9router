@@ -171,7 +171,7 @@ export function createToolCallParser() {
   let buf = "";
   let inBlock = false;
   let blockJson = "";
-  let dropped = false;
+  let malformed = false;
 
   const drain = () => {
     const text = [];
@@ -205,7 +205,13 @@ export function createToolCallParser() {
       inBlock = false;
       const call = parseCall(blockJson);
       if (call) calls.push(call);
-      else dropped = true;
+      else {
+        // Models sometimes mention the marker in prose (for example, while
+        // explaining that they will not use it). A candidate that is not a
+        // valid call must stay visible instead of being swallowed.
+        text.push(`${OPEN_TAG}${blockJson}${CLOSE_TAG}`);
+        malformed = true;
+      }
       blockJson = "";
     }
     return { text: text.join(""), calls };
@@ -221,15 +227,18 @@ export function createToolCallParser() {
       const result = drain();
       let tail = result.text;
       if (inBlock) {
-        dropped = true;
+        // An unclosed marker is prose or a genuinely incomplete call. Show it
+        // rather than dropping the rest of the response.
+        tail += `${OPEN_TAG}${blockJson}${buf}`;
         inBlock = false;
         blockJson = "";
         buf = "";
+        malformed = true;
       } else if (buf) {
         tail += buf;
         buf = "";
       }
-      return { text: tail, calls: result.calls, dropped: dropped || undefined };
+      return { text: tail, calls: result.calls, malformed: malformed || undefined };
     },
   };
 }
