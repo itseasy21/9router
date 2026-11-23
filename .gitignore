@@ -92,6 +92,7 @@ graphify-out/*
 9router-*
 
 # Local sensitive / temp files
+aws-quick-session*.json
 .engine-token.txt
 .tmp-prov.json
 .tmp-providers.json

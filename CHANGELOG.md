@@ -9,9 +9,44 @@
 - **AWS Quick**: match Quick 1.2.4660's desktop identity exactly — platform surface (`QUICK_WORK_DESKTOP_MAC` on macOS/Linux, `QUICK_WORK_DESKTOP_WINDOWS` on win32), Electron 43.8.7 / Chrome 150.0.7871.250 User-Agent, a stable per-connection `workingSessionId`, the desktop query-parameter order, and the desktop `session_connect` feature flags; AIDP enterprise sessions use the bearer-header branch instead of `?token=`
 - **AWS Quick**: deliver client-tool instructions through `custom_prompt` instead of the user transcript (Quick was refusing them as pasted text), preserve prose around `<tool_call>` markers instead of swallowing the reply, and stop the invalid app-level ping that produced `unknown_message_type` status noise
 
+
+# v0.5.123 (2026-11-22)
+
+## Features
+- **Antigravity**: add Gemini 4 Hydrogen in low/medium/high/xhigh tiers plus a bare alias resolving to high, and track the tiers in the usage quota list; run CONTINUATION hops so a `max_tokens` above 64K can reach 1M output in one turn. Hydrogen is the only Gemini 4 model with an xhigh thinking level, so `xhigh` is advertised for Hydrogen only and downgrades to `high` on Carbon/Argon.
+- **Antigravity**: lead every generation request with the official 2.33.0 agent identity inside `systemInstruction`, keeping the client's own prompt after it and skipping the block when the prompt already carries it, so AG MITM traffic is not duplicated.
+- **Kiro**: fall back to CreateResponse (`/v1/responses`) when `/generateAssistantResponse` answers 429 `USER_REQUEST_RATE_EXCEEDED` — conversation state, tool results, images, tool specs and thinking config are converted, and both streaming and non-streaming clients keep working (`NINEROUTER_KIRO_CREATE_RESPONSE=auto|always|off`). The bearer token only follows the connection region when it is a Kiro-served runtime region.
+- **OpenDesign Go / DeepRelay**: add OpenDesign Go (OpenAI, Anthropic and Responses lanes over one `sk-amr` key, credits parsed as BigInt, quota read through a control key that is stripped from API responses) and DeepRelay (wallet balance, hourly burn rate and best-effort spend history) with quota tracking; Synthetic quota now also reports the subscription, hourly search and weekly pool from `/v2/quotas`.
+- **Codex**: add GPT 6.2 Sol and Astra with their `[1m]` variants.
+- **ElevenLabs**: offer the current TTS models (v4, v4_turbo, flash v2/v2.5, multilingual v2, v3) and `scribe_v3` for STT, load the TTS list live from `/v1/models` with a 24h per-key cache, honor the OpenAI-style `voice` field, and pass `response_format`, `language`, `voice_settings`, `seed`, text normalization and pronunciation dictionaries through. ElevenLabs 400/404/422 answers stay request-scoped instead of locking the account.
+- **NVIDIA NIM**: register the 8 live embedding models and support `input_type` (`query`/`passage`) for the asymmetric ones, with a dashboard select rendered only for models that declare it.
+- **Token Saver**: add the REA allow prompt toggle — strips the built-in security-policy paragraphs from CLI system prompts and appends shared REA guidance for every wire format (claude/openai/responses/gemini/kiro); fail-open, idempotent and off by default.
+
+## Fixes
+- **Kiro**: identify as Kiro IDE 1.4.154 on inference, token refresh, model catalog, usage, profile lookup and API-key validation — Kiro's client-version gate rejected the old `kiro-ide/1.0.0` / `KiroIDE-0.10.32` identities with "This version of Kiro is no longer supported" (#5613). All callers now share one identity builder, so they cannot drift apart again.
+- **Antigravity**: correct the model ids and thinking tiers — Carbon, Argon and Hydrogen default to high and Claude 5.5 to medium, Sonnet/Opus 5.5 gain their `max` tiers, the Gemini 4 Neon family is added, and quota lookups, MITM slots and CLI menus follow the new ids.
+- **Antigravity**: align the client identity with the live Hub (2.33.0) and keep the incoming User-Agent shape, so `antigravity/hub/<version>` keeps its `hub/` segment and platform suffix; streaming calls carry `Accept: text/event-stream` again.
+- **Antigravity**: stop the fake 429s — remove the seven Hermes Agent prompt lines and rewrite the OpenClaw header that make the backend answer a request-scoped 429 with quota available, classify a bare 429 as a request-scoped 400 instead of quota exhaustion, read upstream error bodies once on the DNS-bypass path, and retry a refused prompt with its system text moved into the first user turn.
+- **Antigravity**: resolve the dashboard model list from the per-account `v1internal:fetchAvailableModels` catalog with the Hub fingerprint headers, falling back to the static registry rows.
+- **Cloudflare AI**: drop the Workers AI models retired on 2026-11-20 (HTTP 410) plus the ids that never existed in the live catalog, and add the recommended replacements (`deepseek-v4.1-flash-1017`, `gemma-4-26b-a4b-it`, `qwen3.8-27b`, `glm-5.3`, `gpt-oss-120b/20b`, `llama-4-scout-17b-16e-instruct`); add the `clef`, `clef-omni` and `clairic` System One models with a custom `upstreamModelId`.
+- **System One**: unwrap Cloudflare's `result` envelope so answers reach clients and usage is recorded for Cloudflare models.
+- **Translator**: strip the per-turn `x-anthropic-billing-header` line from system text before it is merged into the cached Claude prompt, so a session's prompt cache is no longer split in two (#5739).
+- **Alibaba Token Plan**: add claude/openai transports for `alitp-intl` and `qwencloud` to skip translation, handle the cache accounting pattern in `mergeUsage`, canonicalize usage in `formatDoneLine`, and add 10 models (`qwen4-max`, `glm-5.3`, the deepseek variants) with provider-specific capabilities.
+- **NVIDIA NIM**: advertise tools and the 1M window for hosted Nemotron 3 Ultra, which accepts a 1M prompt and completes tool-calling rounds.
+- **Kimi**: recognize the `k3.1-pro` and `k3.1-pro-highspeed` Code ids with the K3.1 Pro profile (1,048,576 context, 131,072 output, thinking, vision and video input).
+- **Mistral**: emit a string `text_delta` for array content chunks and route thinking parts to `thinking_delta`, so Claude-format clients stop receiving arrays and leaked reasoning; advertise the 1M window for the native Large 4 ids.
+- **OpenCode Go**: send `x-opencode-session` on the key-validation probe, derived from the key with SHA-256 and never logged, so wrong keys no longer look valid.
+- **Qoder**: sign image uploads over the ASCII multipart length while the body-integrity headers keep describing the binary body, so uploads no longer return 403.
+- **Models**: strip a trailing thinking-level override like `(max)` from combo seats before the capability lookup, and add the missing OpenCode free models with a live resolver for their catalog windows.
+- **Usage**: format billion and trillion token counts with K/M/B/T units and boundary promotion, so labels no longer overflow the chart axis (#5670).
+- **Proxy Pools**: upload the Cloudflare worker as a hand-built multipart body with an explicit boundary and Content-Type, instead of a `FormData` the patched fetch serialized as `[object FormData]` (415); add the missing id on the status filter select.
+- **CLI Tools**: configure Pi model input, reasoning and thinking-level maps from `/api/models` caps while leaving unsupported levels unset; offer commandcode and claude live catalogs in the Combo and CLI-tool pickers from one shared provider list.
+- **i18n**: translate the leftover Vietnamese quota labels, status messages and auth hints to English.
+
 # v0.5.119 (2026-11-11)
 
 ## Features
+- **Synthetic**: add Synthetic (`syn`) — OpenAI-compatible upstream on `api.synthetic.new` with the always-on `hf:` models as a static fallback, model passthrough, live model discovery, and a usage tracker reading `GET /v2/quotas`
 - **Claude**: add Claude Fable 5.2 ($8/$40) as the Fable flagship and `claude-haiku-5-5` ($0.10/$0.50, 1M/128K); the advertised Claude Code version now auto-tracks the latest npm release (floor 2.1.322, pin with `CLAUDE_CLI_VERSION`), and the dashboard lists live models through the OAuth bearer
 - **Antigravity**: add Gemini 4 Carbon in low/medium/high tiers plus a bare alias resolving to medium, and track the tiers in the usage quota list
 - **CommandCode**: add `google/gemini-4-carbon` and `claude-fable-5-2`, and resolve the model list from the CLI's live catalog (`GET /provider/v1/models?view=client`) in the dashboard and `GET /v1/models`
@@ -42,6 +77,10 @@
 - **Quota**: catch a Claude reset missed between auto-ping ticks and retry it after the failure cooldown
 - **Routing**: route bare `claude-*` ids to Claude OAuth when no anthropic connection is active
 - **Usage**: display Claude `output_tokens` in request details instead of 0
+- **Synthetic**: validate keys through `/v2/quotas` (the public `/openai/v1/models` answers 200 for any Bearer value, so a revoked key was stored as valid) and route the Test button through `validateUrl` instead of answering "Provider test not supported"
+- **Xiaomi Token Plan**: replace the retired catalog (`mimo-v2.5-pro/flash`, `mimo-v2-pro`, `mimo-v2-omni`, `mimo-v2-tts` and the `mimo-v2.5-pro-claude` alias) with `mimo-v2.6-pro`, `mimo-v2.6-flash`, `mimo-v2.5-asr` and the three TTS variants, whose ids resolve upstream
+- **Usage**: show usage for a MiniMax Code desktop lease connection (`authType: "mcode-lease"`) in Provider Limits and the usage route, and forward `authType` through the dispatch so lease mode is detected instead of answering "Usage API not implemented"
+- **Dashboard**: replace the custom model capability toggle with an explicit Model type selector (Chat / LLM by default) — enabling Speech to text no longer flips a chat model to STT and drops it from Available Models (#5602)
 - **UI**: link explicit input ids to their labels
 
 # v0.5.116 (2026-11-08)
@@ -82,12 +121,10 @@
 ## Features
 - **MiniMax Code**: add lease auth mode that rides the desktop app's sign-in through a named-pipe/unix-socket broker (length-prefixed JSON protocol, broker-owned token refresh — no refresh token held locally since MiniMax tokens are single-use), with a dashboard lease button and usage attribution
 - **Nace Drex**: add the `nace` provider to the System One lane with `drex`, `drex-v2.0` and `drex-max`
-- **Dashboard**: show the short build commit next to the version in the sidebar (`v0.5.112 · 1e3a9628`), resolved from git at build time with a `NEXT_PUBLIC_GIT_COMMIT`/`GIT_COMMIT` fallback for container builds, plus a `GIT_COMMIT` build arg wired through the Dockerfile and publish workflow; `/api/version` now reports the same commit so a remote deployment can be checked with one curl
 - **CommandCode**: align request headers with the official CLI 1.88.0 through a shared `commandCodeHeaders` service
 - **Codex**: add `gpt-6.1-terra` (responses-lite lane, GPT-6-Lite thinking levels)
 
 ## Fixes
-- **AgentRouter**: retry a spent token budget instead of failing the turn — the gateway reports `exceeded token rate limit` inside an HTTP 200 body, so peek the stream head, retry with exponential backoff (2s/4s/8s, 3 retries), and answer a real 429 once retries are exhausted so it is treated as a rate limit by account fallback and combos. Parse the peeked frames by payload so keep-alive `response.output_text.delta` frames with an empty `delta` no longer end the peek before the error arrives, and keep peeking past reasoning/thinking deltas — the rejection frame arrives right after the model's first thinking tokens, and require non-whitespace answer text so a keep-alive delta containing only a newline no longer commits the body before the rejection frame that follows it. Detection is now channel- and split-proof: invisible zero-width/bidi keep-alives no longer count as an answer, the rejection is recognised when the relay writes it as ordinary assistant text (whole or split across deltas, with or without the `[Error] ` prefix) instead of a `response.failed` frame, and a real answer that merely quotes the sentence still passes through (verified against a real SSE upstream in `agentrouter-mock-upstream.test.js`)
 - **NVIDIA NIM**: normalize assistant `reasoning` aliases to `reasoning_content` before forwarding, avoiding NIM's duplicate-field 400 when clients send both.
 - **Lazy Runtime**: make the on-demand wreq-js/playwright-core installer work inside published builds — fetch `createRequire` at runtime instead of the bundler-stubbed static import, mark the runtime-dir `import()` calls `webpackIgnore` so file URLs are not captured as bundle chunks, anchor npm to the runtime dir with a minimal `package.json`, and wipe + reinstall once when npm exits 0 on a partially-extracted package (#5245)
 - **Docker**: bake `wreq-js` and `playwright-core` into the runner image's `node_modules` (builder-stage isolated install) so OpenCode Free resolves without runtime downloads (#5245)
@@ -214,7 +251,6 @@
 - **Dashboard**: open 9Remote sidebar item directly to website
 
 ## Fixes
-- **Token Saver**: remove the destructive compression engines (CCR, Relevance, Aggressive, Ultra) from the stacked pipeline — they discarded information with no recovery path (CCR elided prose middles with no actual archive; Ultra could rewrite the live user message). Kept engines are lossless or recoverable only: Session-Dedup, Lite, Responses Tool Output. Stale saved settings for removed engines are ignored safely
 - Avoid Headroom compression warnings caused by large unchanged tool schemas (#4809).
 - **Dashboard**: fix mobile layouts for API Keys card (alignment, code wrap), header breadcrumbs (overflow collision), model chips (full width, break-all), and Claude CLI settings
 - **Gemini**: do not treat properties map as schema node when tool parameter is named `properties` (#4620); rename `$ref` keys in `functionResponse` payloads
@@ -922,7 +958,7 @@
 # v0.5.8 (2026-06-21)
 
 ## Features
-- **Antigravity**: native image generation support (image models tagged kind:image, hiển thị trong media-providers UI)
+- **Antigravity**: native image generation support (image models tagged kind:image, shown in the media-providers UI)
 - **CodeBuddy CN**: API key auth + credit quota tracker
 - **CodeBuddy CN**: short model prefix alias "cbcn"
 

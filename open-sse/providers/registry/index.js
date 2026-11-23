@@ -152,6 +152,10 @@ import p154 from "./runcrate.js";
 import p155 from "./nace.js";
 import p156 from "./sensenova-intl.js";
 import p157 from "./aws-quick.js";
+import p158 from "./synthetic.js";
+import p159 from "./opendesign-go.js";
+import p160 from "./deeprelay.js";
+import p161 from "./qwencloud.js";
 export default [
   p0,
   p1,
@@ -303,4 +307,8 @@ export default [
   p155,
   p156,
   p157,
+  p158,
+  p159,
+  p160,
+  p161,
 ];
